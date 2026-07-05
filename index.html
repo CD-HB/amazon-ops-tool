@@ -1,0 +1,575 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SellerOps | 亚马逊运营工具台</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%23121a21'/%3E%3Cpath fill='white' d='M12 35 22 10h4l10 25h-6l-2-5H20l-2 5h-6Zm10-10h4l-2-7-2 7Z'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主导航">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">SO</div>
+          <div>
+            <strong>SellerOps</strong>
+            <span>Amazon OS</span>
+          </div>
+        </div>
+
+        <nav class="nav-list">
+          <button class="nav-item" data-target="overview" title="运营总览" hidden>
+            <i data-lucide="layout-dashboard" aria-hidden="true"></i>
+            <span>总览</span>
+          </button>
+          <button class="nav-item" data-target="profit" title="利润测算" hidden>
+            <i data-lucide="calculator" aria-hidden="true"></i>
+            <span>利润</span>
+          </button>
+          <button class="nav-item" data-target="inventory" title="库存补货" hidden>
+            <i data-lucide="boxes" aria-hidden="true"></i>
+            <span>库存</span>
+          </button>
+          <button class="nav-item" data-target="ppc" title="PPC 诊断" hidden>
+            <i data-lucide="megaphone" aria-hidden="true"></i>
+            <span>PPC</span>
+          </button>
+          <button class="nav-item is-active" data-target="bulkAds" title="批量广告">
+            <i data-lucide="sheet" aria-hidden="true"></i>
+            <span>批量广告</span>
+          </button>
+          <button class="nav-item" data-target="listing" title="Listing 优化">
+            <i data-lucide="search-check" aria-hidden="true"></i>
+            <span>Listing</span>
+          </button>
+          <button class="nav-item" data-target="promptLibrary" title="提示词库">
+            <i data-lucide="library" aria-hidden="true"></i>
+            <span>提示词</span>
+          </button>
+          <button class="nav-item" data-target="tasks" title="任务看板">
+            <i data-lucide="check-square" aria-hidden="true"></i>
+            <span>任务</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-metric">
+          <span>健康分</span>
+          <strong id="healthScore">86</strong>
+          <div class="mini-track">
+            <span id="healthBar"></span>
+          </div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">亚马逊广告工具</p>
+            <h1>批量广告工作台</h1>
+          </div>
+          <div class="topbar-actions">
+            <label class="select-wrap" for="marketplaceSelect">
+              <span>站点</span>
+              <select id="marketplaceSelect">
+                <option value="all">全部</option>
+                <option value="US">美国</option>
+                <option value="UK">英国</option>
+                <option value="DE">德国</option>
+                <option value="JP">日本</option>
+              </select>
+            </label>
+            <button class="icon-text-button" id="importButton" type="button" title="导入 CSV">
+              <i data-lucide="upload" aria-hidden="true"></i>
+              <span>导入</span>
+            </button>
+            <button class="icon-text-button primary" id="exportButton" type="button" title="导出运营快照">
+              <i data-lucide="download" aria-hidden="true"></i>
+              <span>导出</span>
+            </button>
+            <input id="csvInput" type="file" accept=".csv,text/csv" hidden />
+          </div>
+        </header>
+
+        <section class="kpi-grid" aria-label="关键指标" hidden>
+          <article class="metric-card">
+            <span>销售额</span>
+            <strong id="revenueKpi">$0</strong>
+            <small id="revenueDelta">+0%</small>
+          </article>
+          <article class="metric-card">
+            <span>毛利率</span>
+            <strong id="marginKpi">0%</strong>
+            <small id="marginDelta">目标 28%</small>
+          </article>
+          <article class="metric-card">
+            <span>广告 ACOS</span>
+            <strong id="acosKpi">0%</strong>
+            <small id="acosDelta">目标 24%</small>
+          </article>
+          <article class="metric-card">
+            <span>库存覆盖</span>
+            <strong id="coverKpi">0 天</strong>
+            <small id="coverDelta">含在途</small>
+          </article>
+          <article class="metric-card">
+            <span>转化率</span>
+            <strong id="cvrKpi">0%</strong>
+            <small id="cvrDelta">近 30 天</small>
+          </article>
+        </section>
+
+        <section class="content-grid" id="overview" hidden>
+          <article class="panel chart-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Sales / Ads</p>
+                <h2>销售与广告趋势</h2>
+              </div>
+              <div class="legend">
+                <span><b class="dot sales"></b>销售额</span>
+                <span><b class="dot ads"></b>广告费</span>
+              </div>
+            </div>
+            <canvas id="trendCanvas" width="920" height="360" aria-label="销售与广告趋势图"></canvas>
+          </article>
+
+          <article class="panel side-panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Marketplace</p>
+                <h2>站点结构</h2>
+              </div>
+            </div>
+            <canvas id="marketCanvas" width="360" height="280" aria-label="站点销售占比图"></canvas>
+            <div class="market-list" id="marketList"></div>
+          </article>
+        </section>
+
+        <section class="panel table-panel" aria-label="SKU 表" hidden>
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">SKU Monitor</p>
+              <h2>SKU 运营监控</h2>
+            </div>
+            <div class="segmented" role="group" aria-label="SKU 筛选">
+              <button class="is-selected" data-filter="all" type="button">全部</button>
+              <button data-filter="risk" type="button">风险</button>
+              <button data-filter="growth" type="button">增长</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>SKU</th>
+                  <th>站点</th>
+                  <th>销售额</th>
+                  <th>毛利</th>
+                  <th>ACOS</th>
+                  <th>库存</th>
+                  <th>状态</th>
+                </tr>
+              </thead>
+              <tbody id="skuTableBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="tool-grid" hidden>
+          <article class="panel tool-panel" id="profit">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Profit</p>
+                <h2>利润测算器</h2>
+              </div>
+            </div>
+            <form class="form-grid" id="profitForm">
+              <label>
+                售价
+                <input id="salePrice" type="number" min="0" step="0.01" value="29.90" />
+              </label>
+              <label>
+                采购成本
+                <input id="unitCost" type="number" min="0" step="0.01" value="8.40" />
+              </label>
+              <label>
+                佣金 %
+                <input id="referralRate" type="number" min="0" max="60" step="0.1" value="15" />
+              </label>
+              <label>
+                FBA 费用
+                <input id="fbaFee" type="number" min="0" step="0.01" value="5.65" />
+              </label>
+              <label>
+                单均广告费
+                <input id="adCost" type="number" min="0" step="0.01" value="3.20" />
+              </label>
+              <label>
+                头程/包装
+                <input id="shippingCost" type="number" min="0" step="0.01" value="1.35" />
+              </label>
+              <label>
+                退款率 %
+                <input id="refundRate" type="number" min="0" max="80" step="0.1" value="4.5" />
+              </label>
+              <label>
+                目标毛利 %
+                <input id="targetMargin" type="number" min="0" max="80" step="0.1" value="22" />
+              </label>
+            </form>
+            <div class="result-strip">
+              <div>
+                <span>单件利润</span>
+                <strong id="profitValue">$0.00</strong>
+              </div>
+              <div>
+                <span>利润率</span>
+                <strong id="profitMargin">0%</strong>
+              </div>
+              <div>
+                <span>盈亏 ACOS</span>
+                <strong id="breakEvenAcos">0%</strong>
+              </div>
+              <div>
+                <span>建议底价</span>
+                <strong id="minPrice">$0.00</strong>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel tool-panel" id="inventory">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Inventory</p>
+                <h2>补货规划器</h2>
+              </div>
+            </div>
+            <form class="form-grid compact" id="inventoryForm">
+              <label>
+                日均销量
+                <input id="dailySales" type="number" min="0" step="1" value="68" />
+              </label>
+              <label>
+                生产+物流天数
+                <input id="leadTime" type="number" min="0" step="1" value="38" />
+              </label>
+              <label>
+                安全天数
+                <input id="safetyDays" type="number" min="0" step="1" value="12" />
+              </label>
+              <label>
+                可售库存
+                <input id="stockOnHand" type="number" min="0" step="1" value="846" />
+              </label>
+              <label>
+                在途数量
+                <input id="inboundUnits" type="number" min="0" step="1" value="420" />
+              </label>
+              <label>
+                箱规
+                <input id="cartonSize" type="number" min="1" step="1" value="24" />
+              </label>
+            </form>
+            <div class="inventory-meter">
+              <div class="meter-head">
+                <span>覆盖天数</span>
+                <strong id="coverageDays">0 天</strong>
+              </div>
+              <div class="wide-track">
+                <span id="coverageBar"></span>
+              </div>
+            </div>
+            <div class="result-strip">
+              <div>
+                <span>建议补货</span>
+                <strong id="reorderUnits">0</strong>
+              </div>
+              <div>
+                <span>整箱数</span>
+                <strong id="cartonCount">0</strong>
+              </div>
+              <div>
+                <span>预计断货</span>
+                <strong id="stockoutDate">--</strong>
+              </div>
+            </div>
+          </article>
+        </section>
+
+        <section class="panel ppc-panel" id="ppc" hidden>
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Advertising</p>
+              <h2>PPC 诊断台</h2>
+            </div>
+            <label class="range-wrap" for="targetAcos">
+              <span>目标 ACOS <b id="targetAcosText">24%</b></span>
+              <input id="targetAcos" type="range" min="8" max="45" step="1" value="24" />
+            </label>
+          </div>
+          <div class="campaign-grid" id="campaignGrid"></div>
+        </section>
+
+        <section class="panel bulk-panel" id="bulkAds">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Bulk Ads</p>
+              <h2>批量广告生成器</h2>
+            </div>
+            <div class="bulk-actions">
+              <button class="icon-text-button" id="copyBulkButton" type="button" title="复制批量广告 CSV">
+                <i data-lucide="copy" aria-hidden="true"></i>
+                <span>复制</span>
+              </button>
+              <button class="icon-text-button primary" id="downloadBulkButton" type="button" title="下载亚马逊后台上传表格">
+                <i data-lucide="download" aria-hidden="true"></i>
+                <span>下载上传表格</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="bulk-layout">
+            <div class="bulk-builder">
+              <form class="bulk-global-form" id="bulkAdsForm">
+                <label>
+                  Portfolio ID（选填）
+                  <input id="bulkPortfolioId" type="text" value="" placeholder="没有真实广告组合 ID 就留空" />
+                </label>
+                <label>
+                  站点
+                  <select id="bulkMarketplace">
+                    <option value="US">US</option>
+                    <option value="UK">UK</option>
+                    <option value="DE">DE</option>
+                    <option value="JP">JP</option>
+                  </select>
+                </label>
+                <label>
+                  开始日期
+                  <input id="bulkStartDate" type="date" />
+                </label>
+                <label>
+                  默认竞价方案
+                  <select id="bulkBiddingStrategy">
+                    <option value="Dynamic bids - up and down">动态竞价 - 提高和降低</option>
+                    <option value="Dynamic bids - down only">动态竞价 - 只降低</option>
+                    <option value="Fixed bids">固定竞价</option>
+                  </select>
+                </label>
+              </form>
+
+              <div class="bulk-campaign-head">
+                <div>
+                  <p class="eyebrow">Campaign Table</p>
+                  <h3>广告活动批量表</h3>
+                </div>
+                <button class="icon-text-button primary" id="addBulkCampaignButton" type="button" title="新增广告活动">
+                  <i data-lucide="plus" aria-hidden="true"></i>
+                  <span>新增广告活动</span>
+                </button>
+              </div>
+
+              <div class="table-wrap campaign-table-wrap">
+                <table class="campaign-editor-table">
+                  <thead>
+                    <tr>
+                      <th>启用</th>
+                      <th>操作</th>
+                      <th>广告活动名称</th>
+                      <th>投放类型</th>
+                      <th>匹配类型</th>
+                      <th>广告组编号</th>
+                      <th>竞价方案</th>
+                      <th>预算</th>
+                      <th>默认竞价</th>
+                      <th>SKU / ASIN</th>
+                      <th>投放内容</th>
+                      <th>否定词</th>
+                    </tr>
+                  </thead>
+                  <tbody id="bulkCampaignTableBody"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <aside class="bulk-summary" aria-label="批量广告校验">
+              <div class="result-strip compact-results">
+                <div>
+                  <span>生成行数</span>
+                  <strong id="bulkRowCount">0</strong>
+                </div>
+                <div>
+                  <span>活动数</span>
+                  <strong id="bulkCampaignCount">0</strong>
+                </div>
+                <div>
+                  <span>预算合计</span>
+                  <strong id="bulkBudgetTotal">$0</strong>
+                </div>
+              </div>
+              <div class="bulk-checklist" id="bulkChecklist"></div>
+            </aside>
+          </div>
+
+          <div class="table-wrap bulk-table-wrap">
+            <table class="bulk-table">
+              <thead>
+                <tr>
+                  <th>Record Type</th>
+                  <th>Campaign</th>
+                  <th>Ad Group</th>
+                  <th>Portfolio ID</th>
+                  <th>Match / Target</th>
+                  <th>Bid</th>
+                  <th>竞价方案</th>
+                  <th>State</th>
+                </tr>
+              </thead>
+              <tbody id="bulkPreviewBody"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="tool-grid">
+          <article class="panel tool-panel" id="listing">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Listing</p>
+                <h2>关键词与 Listing 健康度</h2>
+              </div>
+              <div class="score-pill" id="listingScore">0</div>
+            </div>
+            <div class="listing-grid">
+              <label>
+                核心关键词
+                <textarea id="keywordInput" rows="5">travel mug, insulated coffee cup, leak proof tumbler, stainless steel bottle, car cup holder</textarea>
+              </label>
+              <label>
+                标题
+                <textarea id="titleInput" rows="5">20oz Insulated Travel Mug with Leak Proof Lid, Stainless Steel Coffee Tumbler for Car Cup Holder</textarea>
+              </label>
+              <label class="wide-field">
+                五点描述
+                <textarea id="bulletInput" rows="6">Double-wall vacuum insulation keeps drinks hot or cold.
+Leak proof lid fits commute, office, and travel use.
+Slim stainless steel body fits most car cup holders.
+BPA-free parts are easy to clean after daily coffee use.
+Gift-ready color options for home, work, and outdoor trips.</textarea>
+              </label>
+            </div>
+            <div class="keyword-output">
+              <div>
+                <span class="output-label">已覆盖</span>
+                <div class="chip-row" id="coveredKeywords"></div>
+              </div>
+              <div>
+                <span class="output-label">待补充</span>
+                <div class="chip-row" id="missingKeywords"></div>
+              </div>
+            </div>
+          </article>
+
+          <article class="panel tool-panel prompt-library-panel" id="promptLibrary">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Prompt Library</p>
+                <h2>提示词整理</h2>
+              </div>
+              <div class="prompt-header-actions">
+                <button class="icon-text-button" id="importPromptButton" type="button" title="导入提示词 JSON">
+                  <i data-lucide="upload" aria-hidden="true"></i>
+                  <span>导入</span>
+                </button>
+                <button class="icon-text-button" id="exportPromptButton" type="button" title="导出提示词 JSON">
+                  <i data-lucide="download" aria-hidden="true"></i>
+                  <span>导出</span>
+                </button>
+                <input id="promptImportInput" type="file" accept="application/json,.json" hidden />
+              </div>
+            </div>
+
+            <div class="prompt-toolbar">
+              <div class="prompt-tabs" id="promptCategoryTabs"></div>
+              <label class="prompt-search">
+                搜索
+                <input id="promptSearchInput" type="search" placeholder="标题、标签、内容" autocomplete="off" />
+              </label>
+            </div>
+
+            <div class="prompt-library-layout">
+              <form class="prompt-form" id="promptForm">
+                <div class="prompt-form-grid">
+                  <label>
+                    标题
+                    <input id="promptTitleInput" type="text" placeholder="例如：Listing 标题五点生成" autocomplete="off" />
+                  </label>
+                  <label>
+                    分类
+                    <select id="promptCategoryInput"></select>
+                  </label>
+                  <label class="wide-field">
+                    标签
+                    <input id="promptTagsInput" type="text" placeholder="用逗号分隔，例如：美国站,新品,保温杯" autocomplete="off" />
+                  </label>
+                  <label class="wide-field">
+                    提示词内容
+                    <textarea id="promptContentInput" rows="12" placeholder="把你整理好的提示词粘贴到这里"></textarea>
+                  </label>
+                  <label class="wide-field">
+                    备注
+                    <textarea id="promptNoteInput" rows="3" placeholder="适用场景、输入变量、注意事项"></textarea>
+                  </label>
+                </div>
+                <div class="prompt-form-actions">
+                  <button class="icon-text-button primary" type="submit" title="保存提示词">
+                    <i data-lucide="save" aria-hidden="true"></i>
+                    <span>保存</span>
+                  </button>
+                  <button class="icon-text-button" id="newPromptButton" type="button" title="新建提示词">
+                    <i data-lucide="plus" aria-hidden="true"></i>
+                    <span>新建</span>
+                  </button>
+                  <button class="icon-text-button" id="copyCurrentPromptButton" type="button" title="复制当前提示词">
+                    <i data-lucide="copy" aria-hidden="true"></i>
+                    <span>复制当前</span>
+                  </button>
+                  <span id="promptStatus"></span>
+                </div>
+              </form>
+
+              <div class="prompt-list" id="promptList"></div>
+            </div>
+          </article>
+
+          <article class="panel tool-panel" id="tasks">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Workflow</p>
+                <h2>运营任务看板</h2>
+              </div>
+              <button class="icon-button" id="clearDoneButton" type="button" title="清理已完成">
+                <i data-lucide="eraser" aria-hidden="true"></i>
+              </button>
+            </div>
+            <form class="task-form" id="taskForm">
+              <input id="taskInput" type="text" placeholder="新增任务" autocomplete="off" />
+              <select id="taskType" aria-label="任务类型">
+                <option value="today">今日</option>
+                <option value="week">本周</option>
+                <option value="watch">观察</option>
+              </select>
+              <button class="icon-button primary" type="submit" title="添加任务">
+                <i data-lucide="plus" aria-hidden="true"></i>
+              </button>
+            </form>
+            <div class="task-list" id="taskList"></div>
+          </article>
+        </section>
+      </main>
+    </div>
+
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
