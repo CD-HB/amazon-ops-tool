@@ -77,68 +77,15 @@ const state = {
       inbound: 120,
       status: "risk"
     }
-  ],
-  campaigns: [
-    {
-      name: "Auto | Travel Mug",
-      type: "自动广告",
-      spend: 4380,
-      sales: 17740,
-      clicks: 1220,
-      orders: 151,
-      ctr: 0.0078
-    },
-    {
-      name: "Exact | Main KW",
-      type: "精准词",
-      spend: 2860,
-      sales: 14320,
-      clicks: 760,
-      orders: 132,
-      ctr: 0.011
-    },
-    {
-      name: "Broad | Competitor",
-      type: "竞品拓词",
-      spend: 3460,
-      sales: 6410,
-      clicks: 920,
-      orders: 54,
-      ctr: 0.0034
-    },
-    {
-      name: "Video | Launch",
-      type: "视频广告",
-      spend: 1980,
-      sales: 9640,
-      clicks: 410,
-      orders: 68,
-      ctr: 0.016
-    },
-    {
-      name: "Product | Defense",
-      type: "商品投放",
-      spend: 1120,
-      sales: 8370,
-      clicks: 305,
-      orders: 59,
-      ctr: 0.0091
-    },
-    {
-      name: "Auto | Bento JP",
-      type: "自动广告",
-      spend: 1540,
-      sales: 2810,
-      clicks: 520,
-      orders: 24,
-      ctr: 0.0042
-    }
-  ],
-  trends: {
-    sales: [3800, 4200, 3910, 4600, 4880, 5200, 5700, 5480, 6160, 6610, 7020, 7360],
-    ads: [820, 910, 880, 980, 1110, 1170, 1320, 1240, 1420, 1510, 1640, 1690]
-  }
+  ]
 };
+
+const defaultSkus = JSON.parse(JSON.stringify(state.skus));
+const accountRegistryKey = "sellerops.accounts";
+const currentAccountKey = "sellerops.currentPhone";
+const accountStoragePrefix = "sellerops.account";
+
+let currentAccountPhone = normalizePhone(localStorage.getItem(currentAccountKey) || "");
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -168,6 +115,11 @@ const matchTypeOptions = [
   { value: "exact", label: "精准" },
   { value: "phrase", label: "词组" },
   { value: "broad", label: "广泛" }
+];
+
+const negativeMatchTypeOptions = [
+  { value: "negative exact", label: "否定精准" },
+  { value: "negative phrase", label: "否定词组" }
 ];
 
 const biddingStrategyOptions = [
@@ -225,25 +177,92 @@ const bulkPreviewLimit = 9;
 
 let bulkRows = [];
 
-let bulkCampaigns = [
-  {
-    id: "bulk-campaign-1",
-    enabled: true,
-    name: "",
-    type: "keyword",
-    matchType: "exact",
-    biddingStrategy: "Dynamic bids - up and down",
-    adGroupSuffix: "1",
-    budget: 10,
-    defaultBid: 0.3,
-    products: "",
-    targets: "",
-    negatives: ""
-  }
-];
+function defaultBulkCampaigns() {
+  return [
+    {
+      id: "bulk-campaign-1",
+      enabled: true,
+      name: "",
+      type: "keyword",
+      matchType: "exact",
+      matchTypes: ["exact"],
+      biddingStrategy: "Dynamic bids - up and down",
+      adGroupSuffix: "1",
+      budget: 10,
+      defaultBid: 0.3,
+      products: "",
+      keywords: "",
+      keywordBids: "",
+      targets: "",
+      negativeMatchTypes: ["negative exact"],
+      negativeExact: "",
+      negativePhrase: "",
+      negatives: ""
+    }
+  ];
+}
+
+let bulkCampaigns = defaultBulkCampaigns();
 
 function byId(id) {
   return document.getElementById(id);
+}
+
+function normalizePhone(value) {
+  let digits = String(value || "").replace(/\D/g, "");
+  if (digits.startsWith("86") && digits.length === 13) {
+    digits = digits.slice(2);
+  }
+  return digits;
+}
+
+function isValidPhone(phone) {
+  return /^1[3-9]\d{9}$/.test(phone);
+}
+
+function isValidPassword(password) {
+  return String(password || "").length >= 6;
+}
+
+function passwordHash(phone, password) {
+  const source = `sellerops:v1:${phone}:${password}`;
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function maskPhone(phone) {
+  return phone ? `${phone.slice(0, 3)}****${phone.slice(7)}` : "未登录";
+}
+
+function accountStorageKey(name) {
+  return currentAccountPhone ? `${accountStoragePrefix}.${currentAccountPhone}.${name}` : `sellerops.${name}`;
+}
+
+function readJsonStorage(key, fallback) {
+  try {
+    const stored = localStorage.getItem(key);
+    if (!stored) return typeof fallback === "function" ? fallback() : fallback;
+    return JSON.parse(stored);
+  } catch {
+    return typeof fallback === "function" ? fallback() : fallback;
+  }
+}
+
+function writeJsonStorage(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function readAccounts() {
+  const accounts = readJsonStorage(accountRegistryKey, {});
+  return accounts && typeof accounts === "object" && !Array.isArray(accounts) ? accounts : {};
+}
+
+function saveAccounts(accounts) {
+  writeJsonStorage(accountRegistryKey, accounts);
 }
 
 function filteredSkus() {
@@ -322,124 +341,6 @@ function renderSkuTable() {
     `<tr><td colspan="7">当前筛选下暂无 SKU。</td></tr>`;
 }
 
-function drawTrendChart() {
-  const canvas = byId("trendCanvas");
-  const ctx = canvas.getContext("2d");
-  const width = canvas.width;
-  const height = canvas.height;
-  const pad = 42;
-  const sales = state.trends.sales;
-  const ads = state.trends.ads;
-  const max = Math.max(...sales, ...ads) * 1.16;
-  const toPoint = (value, index) => {
-    const x = pad + (index / (sales.length - 1)) * (width - pad * 2);
-    const y = height - pad - (value / max) * (height - pad * 1.8);
-    return { x, y };
-  };
-
-  ctx.clearRect(0, 0, width, height);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, width, height);
-  ctx.strokeStyle = "#dfe5e8";
-  ctx.lineWidth = 1;
-  ctx.font = "13px Segoe UI, Arial";
-  ctx.fillStyle = "#67717b";
-
-  for (let i = 0; i < 5; i += 1) {
-    const y = pad + i * ((height - pad * 1.8) / 4);
-    ctx.beginPath();
-    ctx.moveTo(pad, y);
-    ctx.lineTo(width - pad, y);
-    ctx.stroke();
-  }
-
-  function drawLine(values, stroke, fill) {
-    const points = values.map(toPoint);
-    const gradient = ctx.createLinearGradient(0, pad, 0, height - pad);
-    gradient.addColorStop(0, fill);
-    gradient.addColorStop(1, "rgba(255,255,255,0)");
-    ctx.beginPath();
-    points.forEach((point, index) => {
-      if (index === 0) ctx.moveTo(point.x, point.y);
-      else ctx.lineTo(point.x, point.y);
-    });
-    ctx.lineTo(points[points.length - 1].x, height - pad);
-    ctx.lineTo(points[0].x, height - pad);
-    ctx.closePath();
-    ctx.fillStyle = gradient;
-    ctx.fill();
-
-    ctx.beginPath();
-    points.forEach((point, index) => {
-      if (index === 0) ctx.moveTo(point.x, point.y);
-      else ctx.lineTo(point.x, point.y);
-    });
-    ctx.strokeStyle = stroke;
-    ctx.lineWidth = 3;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.stroke();
-  }
-
-  drawLine(sales, "#158463", "rgba(21,132,99,0.18)");
-  drawLine(ads, "#246bce", "rgba(36,107,206,0.12)");
-
-  const labels = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
-  ctx.fillStyle = "#67717b";
-  labels.forEach((label, index) => {
-    if (index % 2 === 0 || index === labels.length - 1) {
-      const point = toPoint(0, index);
-      ctx.fillText(label, point.x - 10, height - 12);
-    }
-  });
-}
-
-function drawMarketChart() {
-  const canvas = byId("marketCanvas");
-  const ctx = canvas.getContext("2d");
-  const colors = ["#158463", "#246bce", "#b86e00", "#c94343"];
-  const markets = ["US", "UK", "DE", "JP"].map((market, index) => ({
-    market,
-    value: state.skus
-      .filter((item) => item.marketplace === market)
-      .reduce((sum, item) => sum + item.revenue, 0),
-    color: colors[index]
-  }));
-  const total = markets.reduce((sum, item) => sum + item.value, 0);
-  let start = -Math.PI / 2;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  markets.forEach((item) => {
-    const end = start + (item.value / total) * Math.PI * 2;
-    ctx.beginPath();
-    ctx.arc(180, 132, 92, start, end);
-    ctx.lineWidth = 30;
-    ctx.strokeStyle = item.color;
-    ctx.stroke();
-    start = end;
-  });
-  ctx.fillStyle = "#10161b";
-  ctx.font = "700 30px Segoe UI, Arial";
-  ctx.textAlign = "center";
-  ctx.fillText(currency.format(total), 180, 126);
-  ctx.fillStyle = "#67717b";
-  ctx.font = "13px Segoe UI, Arial";
-  ctx.fillText("总销售额", 180, 151);
-  ctx.textAlign = "left";
-
-  byId("marketList").innerHTML = markets
-    .map(
-      (item) => `
-        <div class="market-row">
-          <span class="market-swatch" style="background:${item.color}"></span>
-          <span>${item.market}</span>
-          <strong>${percent.format(item.value / total)}</strong>
-        </div>
-      `
-    )
-    .join("");
-}
-
 function numberValue(id) {
   return Number.parseFloat(byId(id).value) || 0;
 }
@@ -489,49 +390,6 @@ function updateInventory() {
     month: "2-digit",
     day: "2-digit"
   });
-}
-
-function campaignAction(campaign, targetAcos) {
-  const acos = campaign.sales ? campaign.spend / campaign.sales : 1;
-  const cvr = campaign.clicks ? campaign.orders / campaign.clicks : 0;
-  if (acos > targetAcos * 1.35 && campaign.clicks > 400) return { text: "降竞价 / 加否定", tone: "risk" };
-  if (acos > targetAcos && cvr < 0.08) return { text: "收紧匹配", tone: "warn" };
-  if (acos < targetAcos * 0.75 && cvr > 0.12) return { text: "提价 / 加预算", tone: "good" };
-  if (campaign.ctr < 0.005) return { text: "优化主图词", tone: "warn" };
-  return { text: "维持观察", tone: "good" };
-}
-
-function renderCampaigns() {
-  const target = numberValue("targetAcos") / 100;
-  byId("targetAcosText").textContent = percent.format(target);
-  byId("campaignGrid").innerHTML = state.campaigns
-    .map((campaign) => {
-      const acos = campaign.sales ? campaign.spend / campaign.sales : 0;
-      const cvr = campaign.clicks ? campaign.orders / campaign.clicks : 0;
-      const action = campaignAction(campaign, target);
-      return `
-        <article class="campaign-item">
-          <div class="campaign-top">
-            <div>
-              <strong>${campaign.name}</strong>
-              <span>${campaign.type}</span>
-            </div>
-            <span class="status-pill ${action.tone}">${percent.format(acos)}</span>
-          </div>
-          <div class="campaign-metrics">
-            <div><span>花费</span><strong>${currency.format(campaign.spend)}</strong></div>
-            <div><span>销售</span><strong>${currency.format(campaign.sales)}</strong></div>
-            <div><span>转化</span><strong>${percent.format(cvr)}</strong></div>
-          </div>
-          <div class="action-line">
-            <span>${action.text}</span>
-            <i data-lucide="arrow-up-right" aria-hidden="true"></i>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-  refreshIcons();
 }
 
 function csvValue(value) {
@@ -646,6 +504,72 @@ function parseBulkKeywords(value, defaultBid, defaultMatch = "exact") {
   });
 }
 
+function normalizeKeywordMatchTypes(campaign) {
+  const allowed = new Set(matchTypeOptions.map((option) => option.value));
+  const selected = Array.isArray(campaign.matchTypes) && campaign.matchTypes.length ? campaign.matchTypes : [campaign.matchType || "exact"];
+  const normalized = selected.filter((type) => allowed.has(type));
+  return normalized.length ? normalized : ["exact"];
+}
+
+function normalizeNegativeMatchValue(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[_-]+/g, " ");
+  if (normalized === "negative exact" || normalized === "exact") return "negative exact";
+  if (normalized === "negative phrase" || normalized === "phrase") return "negative phrase";
+  return "";
+}
+
+function normalizeNegativeMatchTypes(campaign) {
+  const allowed = new Set(negativeMatchTypeOptions.map((option) => option.value));
+  const selected =
+    Array.isArray(campaign.negativeMatchTypes) && campaign.negativeMatchTypes.length
+      ? campaign.negativeMatchTypes
+      : [campaign.negativeMatchType || "negative exact"];
+  const normalized = selected.map(normalizeNegativeMatchValue).filter((type) => allowed.has(type));
+  return normalized.length ? normalized : ["negative exact"];
+}
+
+function keywordLinesForEditor(campaign) {
+  if (campaign.keywords != null) return campaign.keywords;
+  const defaultBid = readCampaignNumber(campaign, "defaultBid", 0.45);
+  return parseBulkKeywords(campaign.targets || "", defaultBid, campaign.matchType || "exact")
+    .map((item) => item.keyword)
+    .join("\n");
+}
+
+function keywordBidLinesForEditor(campaign) {
+  if (campaign.keywordBids != null) return campaign.keywordBids;
+  const defaultBid = readCampaignNumber(campaign, "defaultBid", 0.45);
+  return parseBulkKeywords(campaign.targets || "", defaultBid, campaign.matchType || "exact")
+    .map((item) => item.bid)
+    .join("\n");
+}
+
+function parseKeywordBid(value) {
+  const bid = Number.parseFloat(String(value || "").trim());
+  return Number.isFinite(bid) && bid > 0 ? bid : null;
+}
+
+function keywordEntriesForCampaign(campaign, defaultBid) {
+  if (campaign.keywords == null && campaign.keywordBids == null && campaign.targets) {
+    return parseBulkKeywords(campaign.targets, defaultBid, campaign.matchType || "exact").map((item) => ({
+      keyword: item.keyword,
+      bid: item.bid || defaultBid
+    }));
+  }
+
+  const keywordLines = splitBulkLines(campaign.keywords || "");
+  const bidLines = splitBulkLines(campaign.keywordBids || "");
+  return keywordLines.map((line, index) => {
+    const parts = line.split(/[,，\t]+/).map((part) => part.trim()).filter(Boolean);
+    const inlineBid = parseKeywordBid(parts[1]);
+    const lineBid = parseKeywordBid(bidLines[index]);
+    return {
+      keyword: parts[0] || "",
+      bid: lineBid || inlineBid || defaultBid
+    };
+  });
+}
+
 function parseBulkTargets(value, defaultBid) {
   return splitBulkLines(value).map((line) => {
     const parts = line.split(/[,，\t]+/).map((part) => part.trim()).filter(Boolean);
@@ -656,14 +580,51 @@ function parseBulkTargets(value, defaultBid) {
   });
 }
 
-function parseBulkNegatives(value) {
+function parseBulkNegatives(value, matchTypes = ["negative exact"]) {
+  const selectedMatchTypes = matchTypes.length ? matchTypes : ["negative exact"];
+  return splitBulkLines(value).flatMap((line) => {
+    const parts = line.split(/[,，\t]+/).map((part) => part.trim()).filter(Boolean);
+    const inlineMatch = normalizeNegativeMatchValue(parts.slice(1).join(" "));
+    const matches = inlineMatch ? [inlineMatch] : selectedMatchTypes;
+    return matches.map((match) => ({
+      keyword: parts[0] || "",
+      match
+    }));
+  });
+}
+
+function parseNegativeLinesForMatch(value, match) {
   return splitBulkLines(value).map((line) => {
     const parts = line.split(/[,，\t]+/).map((part) => part.trim()).filter(Boolean);
     return {
       keyword: parts[0] || "",
-      match: (parts[1] || "negative exact").toLowerCase()
+      match
     };
   });
+}
+
+function legacyNegativeEntriesForCampaign(campaign) {
+  return parseBulkNegatives(campaign.negatives || "", normalizeNegativeMatchTypes(campaign));
+}
+
+function negativeLinesForEditor(campaign, match) {
+  const field = match === "negative phrase" ? "negativePhrase" : "negativeExact";
+  if (campaign[field] != null) return campaign[field];
+  return legacyNegativeEntriesForCampaign(campaign)
+    .filter((item) => item.match === match)
+    .map((item) => item.keyword)
+    .join("\n");
+}
+
+function negativeEntriesForCampaign(campaign) {
+  const hasSplitFields = campaign.negativeExact != null || campaign.negativePhrase != null;
+  if (!hasSplitFields) {
+    return legacyNegativeEntriesForCampaign(campaign);
+  }
+  return [
+    ...parseNegativeLinesForMatch(campaign.negativeExact || "", "negative exact"),
+    ...parseNegativeLinesForMatch(campaign.negativePhrase || "", "negative phrase")
+  ];
 }
 
 function parseAutoTargets(value, defaultBid) {
@@ -764,6 +725,48 @@ function getBulkSettings() {
   };
 }
 
+function cloneDefaultSkus() {
+  return JSON.parse(JSON.stringify(defaultSkus));
+}
+
+function readAccountSkus() {
+  const skus = readJsonStorage(accountStorageKey("skus"), cloneDefaultSkus);
+  return Array.isArray(skus) && skus.length ? skus : cloneDefaultSkus();
+}
+
+function saveAccountSkus() {
+  if (!currentAccountPhone) return;
+  writeJsonStorage(accountStorageKey("skus"), state.skus);
+}
+
+function readBulkCampaigns() {
+  const campaigns = readJsonStorage(accountStorageKey("bulkCampaigns"), defaultBulkCampaigns);
+  return Array.isArray(campaigns) && campaigns.length ? campaigns : defaultBulkCampaigns();
+}
+
+function saveBulkCampaigns() {
+  if (!currentAccountPhone) return;
+  writeJsonStorage(accountStorageKey("bulkCampaigns"), bulkCampaigns);
+}
+
+function readBulkSettings() {
+  const settings = readJsonStorage(accountStorageKey("bulkSettings"), {});
+  return settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {};
+}
+
+function applyBulkSettings() {
+  const settings = readBulkSettings();
+  byId("bulkPortfolioId").value = settings.portfolioId || "";
+  byId("bulkMarketplace").value = settings.marketplace || "US";
+  byId("bulkStartDate").value = settings.startDate || todayInputValue();
+  byId("bulkBiddingStrategy").value = settings.biddingStrategy || "Dynamic bids - up and down";
+}
+
+function saveBulkSettings() {
+  if (!currentAccountPhone) return;
+  writeJsonStorage(accountStorageKey("bulkSettings"), getBulkSettings());
+}
+
 function readCampaignNumber(campaign, field, fallback) {
   const value = Number.parseFloat(campaign[field]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -794,14 +797,20 @@ function createBulkCampaign(overrides = {}) {
     name: `SP-${marketplace}-Campaign-${nextNumber}`,
     type: "keyword",
     matchType: "exact",
+    matchTypes: ["exact"],
     biddingStrategy: defaultBiddingStrategy,
     adGroupSuffix: String(nextNumber),
     budget: 10,
     defaultBid: 0.45,
     products: "",
+    keywords: "",
+    keywordBids: "",
     targets: "",
     asinTargets: defaultAsinTargets(0.45),
     autoTargets: defaultAutoTargets(0.45),
+    negativeMatchTypes: ["negative exact"],
+    negativeExact: "",
+    negativePhrase: "",
     negatives: "",
     ...overrides
   };
@@ -848,15 +857,18 @@ function buildTargetRows(campaign, campaignName, adGroupName, defaultBid) {
     );
   }
 
-  return parseBulkKeywords(campaign.targets, defaultBid, campaign.matchType || "exact").map((item) =>
-    createBulkRow({
-      Entity: "Keyword",
-      "Campaign Id": campaignName,
-      "Ad Group Id": adGroupName,
-      Bid: item.bid,
-      "Keyword Text": item.keyword,
-      "Match Type": item.match
-    })
+  const matchTypes = normalizeKeywordMatchTypes(campaign);
+  return keywordEntriesForCampaign(campaign, defaultBid).flatMap((item) =>
+    matchTypes.map((match) =>
+      createBulkRow({
+        Entity: "Keyword",
+        "Campaign Id": campaignName,
+        "Ad Group Id": adGroupName,
+        Bid: item.bid,
+        "Keyword Text": item.keyword,
+        "Match Type": match
+      })
+    )
   );
 }
 
@@ -868,7 +880,7 @@ function buildRowsForCampaign(campaign, index, settings) {
   const biddingStrategy = campaign.biddingStrategy || settings.biddingStrategy;
   const targetingType = campaign.type === "auto" ? "auto" : "manual";
   const products = parseBulkProducts(campaign.products);
-  const negatives = parseBulkNegatives(campaign.negatives);
+  const negatives = negativeEntriesForCampaign(campaign);
 
   return [
     createBulkRow({
@@ -1253,6 +1265,54 @@ function renderAsinTargetEditor(campaign) {
   `;
 }
 
+function renderKeywordMatchTypeEditor(campaign) {
+  const selected = new Set(normalizeKeywordMatchTypes(campaign));
+  return `
+    <div class="match-type-grid">
+      ${matchTypeOptions
+        .map(
+          (option) => `
+            <label class="match-type-option">
+              <input data-match-type="${option.value}" type="checkbox" ${selected.has(option.value) ? "checked" : ""} />
+              <span>${option.label}</span>
+            </label>
+          `
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderKeywordTargetEditor(campaign) {
+  return `
+    <div class="keyword-target-editor">
+      <div class="keyword-target-head">
+        <span>关键词</span>
+        <span>单独竞价（留空用批量）</span>
+      </div>
+      <div class="keyword-target-grid">
+        <textarea data-field="keywords" rows="4" placeholder="travel mug&#10;insulated coffee cup">${escapeHtml(keywordLinesForEditor(campaign))}</textarea>
+        <textarea data-field="keywordBids" rows="4" placeholder="0.30&#10;0.45">${escapeHtml(keywordBidLinesForEditor(campaign))}</textarea>
+      </div>
+    </div>
+  `;
+}
+
+function renderNegativeKeywordEditor(campaign) {
+  return `
+    <div class="negative-target-editor">
+      <div class="negative-target-head">
+        <span>否定精准</span>
+        <span>否定词组</span>
+      </div>
+      <div class="negative-target-grid">
+        <textarea data-field="negativeExact" rows="3" placeholder="tote bag">${escapeHtml(negativeLinesForEditor(campaign, "negative exact"))}</textarea>
+        <textarea data-field="negativePhrase" rows="3" placeholder="leopard tote">${escapeHtml(negativeLinesForEditor(campaign, "negative phrase"))}</textarea>
+      </div>
+    </div>
+  `;
+}
+
 function renderBulkCampaignTable() {
   const body = byId("bulkCampaignTableBody");
   body.innerHTML = bulkCampaigns
@@ -1285,9 +1345,7 @@ function renderBulkCampaignTable() {
           <td>
             ${
               campaign.type === "keyword"
-                ? `<select data-field="matchType" aria-label="匹配类型">
-                    ${optionTags(matchTypeOptions, campaign.matchType || "exact")}
-                  </select>`
+                ? renderKeywordMatchTypeEditor(campaign)
                 : `<span class="disabled-cell">不适用</span>`
             }
           </td>
@@ -1314,11 +1372,11 @@ function renderBulkCampaignTable() {
                 ? renderAutoTargetEditor(campaign)
                 : campaign.type === "asin"
                   ? renderAsinTargetEditor(campaign)
-                  : `<textarea data-field="targets" rows="3" placeholder="${targetPlaceholderFor(campaign.type)}">${escapeHtml(campaign.targets)}</textarea>`
+                  : renderKeywordTargetEditor(campaign)
             }
           </td>
           <td>
-            <textarea data-field="negatives" rows="3" placeholder="free">${escapeHtml(campaign.negatives)}</textarea>
+            ${renderNegativeKeywordEditor(campaign)}
           </td>
         </tr>
       `
@@ -1342,6 +1400,11 @@ function updateBulkCampaignFromControl(control) {
     }
   } else if (field === "type") {
     campaign[field] = control.value;
+    if (control.value === "keyword") {
+      campaign.matchTypes = normalizeKeywordMatchTypes(campaign);
+      campaign.keywords ??= keywordLinesForEditor(campaign);
+      campaign.keywordBids ??= keywordBidLinesForEditor(campaign);
+    }
     if (control.value === "auto" && !campaign.autoTargets) {
       campaign.autoTargets = defaultAutoTargets(readCampaignNumber(campaign, "defaultBid", 0.45));
     }
@@ -1351,6 +1414,25 @@ function updateBulkCampaignFromControl(control) {
   } else {
     campaign[field] = control.value;
   }
+}
+
+function updateKeywordMatchTypeFromControl(control) {
+  const row = control.closest("[data-campaign-id]");
+  if (!row) return;
+  const campaign = bulkCampaigns.find((item) => item.id === row.dataset.campaignId);
+  if (!campaign) return;
+  const selected = new Set(normalizeKeywordMatchTypes(campaign));
+  if (control.checked) {
+    selected.add(control.dataset.matchType);
+  } else {
+    selected.delete(control.dataset.matchType);
+  }
+  if (!selected.size) {
+    control.checked = true;
+    return;
+  }
+  campaign.matchTypes = matchTypeOptions.map((option) => option.value).filter((type) => selected.has(type));
+  campaign.matchType = campaign.matchTypes[0] || "exact";
 }
 
 function updateAutoTargetFromControl(control) {
@@ -1426,8 +1508,9 @@ function campaignHasTargets(campaign) {
     const hasTargetType = normalizeAsinTargetTypes(campaign, defaultBid).some((item) => item.enabled);
     return hasTargetType && asins.length > 0 && asins.every((item) => isAsin(item.asin) && !isPlaceholderValue(item.asin));
   }
-  const keywords = parseBulkKeywords(campaign.targets, defaultBid, campaign.matchType || "exact");
-  return keywords.length > 0 && keywords.every((item) => item.keyword && !isPlaceholderValue(item.keyword));
+  const keywords = keywordEntriesForCampaign(campaign, defaultBid);
+  const matchTypes = normalizeKeywordMatchTypes(campaign);
+  return matchTypes.length > 0 && keywords.length > 0 && keywords.every((item) => item.keyword && !isPlaceholderValue(item.keyword));
 }
 
 function getBulkValidation(rows = bulkRows) {
@@ -1457,7 +1540,7 @@ function getBulkValidation(rows = bulkRows) {
     {
       ok: campaignsHaveTargets,
       title: "Target Rows",
-      body: "关键词投放需填写关键词；商品投放（ASIN）需填写真实 10 位 ASIN；自动投放需至少启用一个分组。"
+      body: "关键词投放需填写关键词并至少选择一个匹配类型；竞价可用批量竞价，也可逐行覆盖。商品投放（ASIN）需填写真实 10 位 ASIN。"
     },
     {
       ok: rows.length <= 1000,
@@ -1568,35 +1651,7 @@ async function copyBulkCsv() {
   textarea.remove();
 }
 
-function tokenizeKeywords(value) {
-  return value
-    .split(/[\n,，;；]+/)
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean);
-}
-
-function updateListingScore() {
-  const keywords = tokenizeKeywords(byId("keywordInput").value);
-  const title = byId("titleInput").value.trim();
-  const bullets = byId("bulletInput").value.trim();
-  const haystack = `${title} ${bullets}`.toLowerCase();
-  const covered = keywords.filter((keyword) => haystack.includes(keyword));
-  const missing = keywords.filter((keyword) => !haystack.includes(keyword));
-  const titleScore = title.length >= 120 && title.length <= 180 ? 30 : Math.max(10, 30 - Math.abs(150 - title.length) * 0.18);
-  const coverageScore = keywords.length ? (covered.length / keywords.length) * 50 : 0;
-  const bulletCount = bullets.split("\n").filter(Boolean).length;
-  const bulletScore = Math.min(20, bulletCount * 4);
-  const total = Math.round(Math.min(100, titleScore + coverageScore + bulletScore));
-
-  byId("listingScore").textContent = String(total);
-  byId("coveredKeywords").innerHTML =
-    covered.map((keyword) => `<span class="chip covered">${keyword}</span>`).join("") || `<span class="chip missing">暂无</span>`;
-  byId("missingKeywords").innerHTML =
-    missing.map((keyword) => `<span class="chip missing">${keyword}</span>`).join("") || `<span class="chip covered">已完成</span>`;
-}
-
 const promptCategories = [
-  { value: "listing", label: "Listing 文案撰写" },
   { value: "main-image", label: "主图生成" },
   { value: "aplus", label: "A+ 生成" },
   { value: "ads", label: "广告优化" },
@@ -1613,7 +1668,7 @@ function promptCategoryLabel(value) {
 
 function readPromptLibrary() {
   try {
-    const stored = localStorage.getItem("sellerops.prompts");
+    const stored = localStorage.getItem(accountStorageKey("prompts"));
     const parsed = stored ? JSON.parse(stored) : [];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
@@ -1624,7 +1679,8 @@ function readPromptLibrary() {
 let promptLibrary = readPromptLibrary();
 
 function savePromptLibrary() {
-  localStorage.setItem("sellerops.prompts", JSON.stringify(promptLibrary));
+  if (!currentAccountPhone) return;
+  localStorage.setItem(accountStorageKey("prompts"), JSON.stringify(promptLibrary));
 }
 
 function setPromptStatus(text) {
@@ -1645,7 +1701,7 @@ function promptFormValue(id) {
 function clearPromptForm() {
   editingPromptId = "";
   byId("promptTitleInput").value = "";
-  byId("promptCategoryInput").value = "listing";
+  byId("promptCategoryInput").value = "ads";
   byId("promptTagsInput").value = "";
   byId("promptContentInput").value = "";
   byId("promptNoteInput").value = "";
@@ -1709,6 +1765,10 @@ function renderPromptList() {
                 <button class="icon-text-button" type="button" data-prompt-action="copy" title="复制提示词">
                   <i data-lucide="copy" aria-hidden="true"></i>
                   <span>复制</span>
+                </button>
+                <button class="icon-text-button" type="button" data-prompt-action="copy-open" title="复制提示词并打开 ChatGPT">
+                  <i data-lucide="external-link" aria-hidden="true"></i>
+                  <span>复制并打开</span>
                 </button>
                 <button class="icon-text-button" type="button" data-prompt-action="delete" title="删除提示词">
                   <i data-lucide="trash-2" aria-hidden="true"></i>
@@ -1779,6 +1839,10 @@ async function copyText(text) {
   textarea.remove();
 }
 
+function openChatGpt() {
+  window.open("https://chatgpt.com/", "_blank", "noopener,noreferrer");
+}
+
 async function copyPromptById(id) {
   const prompt = promptLibrary.find((item) => item.id === id);
   if (!prompt) return;
@@ -1786,9 +1850,19 @@ async function copyPromptById(id) {
   setPromptStatus("已复制");
 }
 
+async function copyPromptByIdAndOpen(id) {
+  await copyPromptById(id);
+  openChatGpt();
+}
+
 async function copyCurrentPrompt() {
   await copyText(promptFormValue("promptContentInput"));
   setPromptStatus("已复制");
+}
+
+async function copyCurrentPromptAndOpen() {
+  await copyCurrentPrompt();
+  openChatGpt();
 }
 
 function deletePrompt(id) {
@@ -1843,19 +1917,43 @@ async function importPromptLibrary(file) {
   setPromptStatus(`已导入 ${normalized.length} 条`);
 }
 
+const taskGroups = [
+  { value: "today", label: "今日", title: "今日任务" },
+  { value: "week", label: "本周", title: "本周任务" },
+  { value: "weekend", label: "周末必做", title: "每周末必做" },
+  { value: "monthEnd", label: "月底必做", title: "每月底必做" }
+];
+
+function normalizeTaskType(type) {
+  return taskGroups.some((group) => group.value === type) ? type : "today";
+}
+
 function defaultTasks() {
   return [
     { id: createId("task"), title: "检查风险 SKU 的库存覆盖天数", type: "today", done: false },
     { id: createId("task"), title: "整理 ACOS 超目标广告组的否定词", type: "today", done: false },
     { id: createId("task"), title: "更新 Travel Mug 标题关键词顺序", type: "week", done: false },
-    { id: createId("task"), title: "观察 JP 站 Bento 的退款率变化", type: "watch", done: true }
+    { id: createId("task"), title: "复盘本周广告花费、ACOS 和否定词", type: "weekend", done: false },
+    { id: createId("task"), title: "检查本周库存风险并安排下周补货动作", type: "weekend", done: false },
+    { id: createId("task"), title: "汇总本月销售额、利润率、广告花费和库存现金占用", type: "monthEnd", done: false },
+    { id: createId("task"), title: "备份本月广告导出与运营记录", type: "monthEnd", done: false }
   ];
 }
 
 function readTasks() {
   try {
-    const stored = localStorage.getItem("sellerops.tasks");
-    return stored ? JSON.parse(stored) : defaultTasks();
+    const stored = localStorage.getItem(accountStorageKey("tasks"));
+    const parsed = stored ? JSON.parse(stored) : defaultTasks();
+    return Array.isArray(parsed)
+      ? parsed
+          .filter((task) => task && typeof task === "object" && task.title && task.type !== "watch")
+          .map((task) => ({
+            id: task.id || createId("task"),
+            title: String(task.title),
+            type: normalizeTaskType(task.type),
+            done: Boolean(task.done)
+          }))
+      : defaultTasks();
   } catch {
     return defaultTasks();
   }
@@ -1864,25 +1962,40 @@ function readTasks() {
 let tasks = readTasks();
 
 function saveTasks() {
-  localStorage.setItem("sellerops.tasks", JSON.stringify(tasks));
+  if (!currentAccountPhone) return;
+  localStorage.setItem(accountStorageKey("tasks"), JSON.stringify(tasks));
 }
 
 function renderTasks() {
-  const labels = {
-    today: "今日",
-    week: "本周",
-    watch: "观察"
-  };
-  byId("taskList").innerHTML = tasks
-    .map(
-      (task) => `
-        <label class="task-item ${task.done ? "is-done" : ""}">
-          <input type="checkbox" data-task-id="${task.id}" ${task.done ? "checked" : ""} />
-          <span class="task-title">${task.title}</span>
-          <span class="task-badge ${task.type}">${labels[task.type]}</span>
-        </label>
-      `
-    )
+  const labels = Object.fromEntries(taskGroups.map((group) => [group.value, group.label]));
+  byId("taskList").innerHTML = taskGroups
+    .map((group) => {
+      const groupTasks = tasks.filter((task) => normalizeTaskType(task.type) === group.value);
+      const doneCount = groupTasks.filter((task) => task.done).length;
+      const items = groupTasks.length
+        ? groupTasks
+            .map(
+              (task) => `
+                <label class="task-item ${task.done ? "is-done" : ""}">
+                  <input type="checkbox" data-task-id="${escapeHtml(task.id)}" ${task.done ? "checked" : ""} />
+                  <span class="task-title">${escapeHtml(task.title)}</span>
+                  <span class="task-badge ${normalizeTaskType(task.type)}">${labels[normalizeTaskType(task.type)]}</span>
+                </label>
+              `
+            )
+            .join("")
+        : `<div class="task-empty">暂无任务</div>`;
+
+      return `
+        <section class="task-section" data-task-section="${group.value}">
+          <div class="task-section-heading">
+            <strong>${group.title}</strong>
+            <span>${doneCount}/${groupTasks.length}</span>
+          </div>
+          <div class="task-section-list">${items}</div>
+        </section>
+      `;
+    })
     .join("");
 }
 
@@ -1950,6 +2063,7 @@ function importCsv(file) {
       };
     });
     state.skus = imported;
+    saveAccountSkus();
     renderAll();
   });
   reader.readAsText(file);
@@ -1983,22 +2097,126 @@ function refreshIcons() {
   }
 }
 
+window.refreshIcons = refreshIcons;
+
+function setAuthStatus(message) {
+  const status = byId("authStatus");
+  if (status) status.textContent = message || "";
+}
+
+function renderAccountState() {
+  const isLoggedIn = Boolean(currentAccountPhone);
+  byId("authScreen").hidden = isLoggedIn;
+  byId("appShell").hidden = !isLoggedIn;
+  const phone = byId("currentAccountPhone");
+  if (phone) phone.textContent = maskPhone(currentAccountPhone);
+  refreshIcons();
+}
+
+function migrateLegacyDataForFirstAccount() {
+  [
+    ["sellerops.prompts", "prompts"],
+    ["sellerops.tasks", "tasks"]
+  ].forEach(([legacyKey, accountKey]) => {
+    const legacyValue = localStorage.getItem(legacyKey);
+    const scopedKey = accountStorageKey(accountKey);
+    if (legacyValue && !localStorage.getItem(scopedKey)) {
+      localStorage.setItem(scopedKey, legacyValue);
+    }
+  });
+}
+
+function loadAccountData() {
+  state.skus = readAccountSkus();
+  bulkCampaigns = readBulkCampaigns();
+  promptLibrary = readPromptLibrary();
+  tasks = readTasks();
+  promptCategoryFilter = "all";
+  editingPromptId = "";
+  applyBulkSettings();
+  renderAccountState();
+  renderAll();
+}
+
+function registerOrLogin(phone, password) {
+  const accounts = readAccounts();
+  const firstAccount = Object.keys(accounts).length === 0;
+  const existing = accounts[phone];
+  const hash = passwordHash(phone, password);
+  if (existing?.passwordHash && existing.passwordHash !== hash) {
+    setAuthStatus("密码不正确，请重新输入。");
+    byId("passwordInput").select();
+    return false;
+  }
+  accounts[phone] = {
+    ...existing,
+    phone,
+    createdAt: existing?.createdAt || new Date().toISOString(),
+    passwordHash: existing?.passwordHash || hash,
+    lastLoginAt: new Date().toISOString()
+  };
+  saveAccounts(accounts);
+  currentAccountPhone = phone;
+  localStorage.setItem(currentAccountKey, phone);
+  if (firstAccount && !existing) migrateLegacyDataForFirstAccount();
+  loadAccountData();
+  byId("passwordInput").value = "";
+  return true;
+}
+
+function logoutAccount() {
+  currentAccountPhone = "";
+  bulkCampaigns = defaultBulkCampaigns();
+  promptLibrary = [];
+  tasks = defaultTasks();
+  byId("phoneInput").value = "";
+  byId("passwordInput").value = "";
+  setAuthStatus("");
+  renderAccountState();
+}
+
+function bootstrapAuth() {
+  if (currentAccountPhone && isValidPhone(currentAccountPhone)) byId("phoneInput").value = currentAccountPhone;
+  currentAccountPhone = "";
+  renderAccountState();
+}
+
+function handleAuthSubmit(event) {
+  event?.preventDefault();
+  const phone = normalizePhone(byId("phoneInput").value);
+  const password = byId("passwordInput").value;
+  if (!isValidPhone(phone)) {
+    setAuthStatus("请输入有效的 11 位手机号。");
+    return false;
+  }
+  if (!isValidPassword(password)) {
+    setAuthStatus("密码至少需要 6 位。");
+    byId("passwordInput").focus();
+    return false;
+  }
+  setAuthStatus("");
+  registerOrLogin(phone, password);
+  return false;
+}
+
+window.handleAuthSubmit = handleAuthSubmit;
+
 function renderAll() {
   updateKpis();
   renderSkuTable();
-  drawTrendChart();
-  drawMarketChart();
   updateProfit();
   updateInventory();
-  renderCampaigns();
   renderBulkCampaignTable();
   renderBulkAds();
-  updateListingScore();
   renderPromptLibrary();
   renderTasks();
 }
 
 function bindEvents() {
+  byId("authForm").addEventListener("submit", handleAuthSubmit);
+
+  byId("logoutButton").addEventListener("click", logoutAccount);
+
   byId("marketplaceSelect").addEventListener("change", (event) => {
     state.marketplace = event.target.value;
     renderAll();
@@ -2023,14 +2241,20 @@ function bindEvents() {
 
   byId("profitForm").addEventListener("input", updateProfit);
   byId("inventoryForm").addEventListener("input", updateInventory);
-  byId("targetAcos").addEventListener("input", renderCampaigns);
   if (!byId("bulkStartDate").value) {
     byId("bulkStartDate").value = todayInputValue();
   }
-  byId("bulkAdsForm").addEventListener("input", renderBulkAds);
-  byId("bulkAdsForm").addEventListener("change", renderBulkAds);
+  byId("bulkAdsForm").addEventListener("input", () => {
+    saveBulkSettings();
+    renderBulkAds();
+  });
+  byId("bulkAdsForm").addEventListener("change", () => {
+    saveBulkSettings();
+    renderBulkAds();
+  });
   byId("addBulkCampaignButton").addEventListener("click", () => {
     bulkCampaigns.push(createBulkCampaign());
+    saveBulkCampaigns();
     renderBulkCampaignTable();
     renderBulkAds();
   });
@@ -2038,36 +2262,49 @@ function bindEvents() {
     const autoControl = event.target.closest("[data-auto-key]");
     if (autoControl) {
       updateAutoTargetFromControl(autoControl);
+      saveBulkCampaigns();
       renderBulkAds();
       return;
     }
     const asinControl = event.target.closest("[data-asin-type]");
     if (asinControl) {
       updateAsinTargetFromControl(asinControl);
+      saveBulkCampaigns();
       renderBulkAds();
       return;
     }
     const control = event.target.closest("[data-field]");
     if (!control) return;
     updateBulkCampaignFromControl(control);
+    saveBulkCampaigns();
     renderBulkAds();
   });
   byId("bulkCampaignTableBody").addEventListener("change", (event) => {
+    const matchControl = event.target.closest("[data-match-type]");
+    if (matchControl) {
+      updateKeywordMatchTypeFromControl(matchControl);
+      saveBulkCampaigns();
+      renderBulkAds();
+      return;
+    }
     const autoControl = event.target.closest("[data-auto-key]");
     if (autoControl) {
       updateAutoTargetFromControl(autoControl);
+      saveBulkCampaigns();
       renderBulkAds();
       return;
     }
     const asinControl = event.target.closest("[data-asin-type]");
     if (asinControl) {
       updateAsinTargetFromControl(asinControl);
+      saveBulkCampaigns();
       renderBulkAds();
       return;
     }
     const control = event.target.closest("[data-field]");
     if (!control) return;
     updateBulkCampaignFromControl(control);
+    saveBulkCampaigns();
     if (control.dataset.field === "type") {
       renderBulkCampaignTable();
     }
@@ -2084,6 +2321,7 @@ function bindEvents() {
     if (button.dataset.action === "delete") {
       deleteBulkCampaign(row.dataset.campaignId);
     }
+    saveBulkCampaigns();
     renderBulkCampaignTable();
     renderBulkAds();
   });
@@ -2091,7 +2329,6 @@ function bindEvents() {
   byId("copyBulkButton").addEventListener("click", () => {
     copyBulkCsv().catch(() => {});
   });
-  ["keywordInput", "titleInput", "bulletInput"].forEach((id) => byId(id).addEventListener("input", updateListingScore));
 
   byId("promptForm").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -2104,6 +2341,10 @@ function bindEvents() {
   byId("copyCurrentPromptButton").addEventListener("click", () => {
     copyCurrentPrompt().catch(() => setPromptStatus("复制失败"));
   });
+  byId("copyOpenChatGptButton").addEventListener("click", () => {
+    copyCurrentPromptAndOpen().catch(() => setPromptStatus("打开失败"));
+  });
+  byId("openChatGptButton").addEventListener("click", openChatGpt);
   byId("promptSearchInput").addEventListener("input", renderPromptList);
   byId("promptCategoryTabs").addEventListener("click", (event) => {
     const button = event.target.closest("[data-prompt-category]");
@@ -2120,6 +2361,7 @@ function bindEvents() {
     const id = card.dataset.promptId;
     if (button.dataset.promptAction === "edit") fillPromptForm(id);
     if (button.dataset.promptAction === "copy") copyPromptById(id).catch(() => setPromptStatus("复制失败"));
+    if (button.dataset.promptAction === "copy-open") copyPromptByIdAndOpen(id).catch(() => setPromptStatus("打开失败"));
     if (button.dataset.promptAction === "delete") deletePrompt(id);
   });
   byId("exportPromptButton").addEventListener("click", exportPromptLibrary);
@@ -2174,5 +2416,4 @@ function bindEvents() {
 }
 
 bindEvents();
-renderAll();
-refreshIcons();
+bootstrapAuth();
