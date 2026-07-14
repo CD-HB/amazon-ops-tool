@@ -5,10 +5,40 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SellerOps | 亚马逊运营工具台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%23121a21'/%3E%3Cpath fill='white' d='M12 35 22 10h4l10 25h-6l-2-5H20l-2 5h-6Zm10-10h4l-2-7-2 7Z'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260706-hidden-fix" />
   </head>
   <body>
-    <div class="app-shell">
+    <div class="auth-screen" id="authScreen" hidden>
+      <form class="auth-card" id="authForm" onsubmit="return handleAuthSubmit(event)">
+        <div class="brand auth-brand">
+          <div class="brand-mark" aria-hidden="true">SO</div>
+          <div>
+            <strong>SellerOps</strong>
+            <span>Account</span>
+          </div>
+        </div>
+        <div>
+          <p class="eyebrow">手机号账号</p>
+          <h1>注册 / 登录工作台</h1>
+        </div>
+        <label class="auth-field" for="phoneInput">
+          手机号码
+          <input id="phoneInput" type="tel" inputmode="numeric" autocomplete="tel" maxlength="11" placeholder="请输入 11 位手机号" />
+        </label>
+        <label class="auth-field" for="passwordInput">
+          登录密码
+          <input id="passwordInput" type="password" autocomplete="current-password" minlength="6" placeholder="首次登录请设置至少 6 位密码" />
+        </label>
+        <button class="icon-text-button primary auth-submit" id="authSubmitButton" type="submit" onclick="return handleAuthSubmit(event)">
+          <i data-lucide="log-in" aria-hidden="true"></i>
+          <span>进入工作台</span>
+        </button>
+        <p class="auth-note">首次使用手机号会自动创建本机账号并保存密码；同一手机号再次登录需输入原密码，记录会保持不变。</p>
+        <p class="auth-status" id="authStatus" role="status"></p>
+      </form>
+    </div>
+
+    <div class="app-shell" id="appShell" hidden>
       <aside class="sidebar" aria-label="主导航">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">SO</div>
@@ -19,10 +49,6 @@
         </div>
 
         <nav class="nav-list">
-          <button class="nav-item" data-target="overview" title="运营总览" hidden>
-            <i data-lucide="layout-dashboard" aria-hidden="true"></i>
-            <span>总览</span>
-          </button>
           <button class="nav-item" data-target="profit" title="利润测算" hidden>
             <i data-lucide="calculator" aria-hidden="true"></i>
             <span>利润</span>
@@ -31,17 +57,9 @@
             <i data-lucide="boxes" aria-hidden="true"></i>
             <span>库存</span>
           </button>
-          <button class="nav-item" data-target="ppc" title="PPC 诊断" hidden>
-            <i data-lucide="megaphone" aria-hidden="true"></i>
-            <span>PPC</span>
-          </button>
           <button class="nav-item is-active" data-target="bulkAds" title="批量广告">
             <i data-lucide="sheet" aria-hidden="true"></i>
             <span>批量广告</span>
-          </button>
-          <button class="nav-item" data-target="listing" title="Listing 优化">
-            <i data-lucide="search-check" aria-hidden="true"></i>
-            <span>Listing</span>
           </button>
           <button class="nav-item" data-target="promptLibrary" title="提示词库">
             <i data-lucide="library" aria-hidden="true"></i>
@@ -69,6 +87,13 @@
             <h1>批量广告工作台</h1>
           </div>
           <div class="topbar-actions">
+            <div class="account-chip" id="accountChip" aria-live="polite">
+              <i data-lucide="smartphone" aria-hidden="true"></i>
+              <span id="currentAccountPhone">未登录</span>
+              <button class="icon-button" id="logoutButton" type="button" title="退出登录">
+                <i data-lucide="log-out" aria-hidden="true"></i>
+              </button>
+            </div>
             <label class="select-wrap" for="marketplaceSelect">
               <span>站点</span>
               <select id="marketplaceSelect">
@@ -116,33 +141,6 @@
             <span>转化率</span>
             <strong id="cvrKpi">0%</strong>
             <small id="cvrDelta">近 30 天</small>
-          </article>
-        </section>
-
-        <section class="content-grid" id="overview" hidden>
-          <article class="panel chart-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Sales / Ads</p>
-                <h2>销售与广告趋势</h2>
-              </div>
-              <div class="legend">
-                <span><b class="dot sales"></b>销售额</span>
-                <span><b class="dot ads"></b>广告费</span>
-              </div>
-            </div>
-            <canvas id="trendCanvas" width="920" height="360" aria-label="销售与广告趋势图"></canvas>
-          </article>
-
-          <article class="panel side-panel">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Marketplace</p>
-                <h2>站点结构</h2>
-              </div>
-            </div>
-            <canvas id="marketCanvas" width="360" height="280" aria-label="站点销售占比图"></canvas>
-            <div class="market-list" id="marketList"></div>
           </article>
         </section>
 
@@ -297,20 +295,6 @@
           </article>
         </section>
 
-        <section class="panel ppc-panel" id="ppc" hidden>
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Advertising</p>
-              <h2>PPC 诊断台</h2>
-            </div>
-            <label class="range-wrap" for="targetAcos">
-              <span>目标 ACOS <b id="targetAcosText">24%</b></span>
-              <input id="targetAcos" type="range" min="8" max="45" step="1" value="24" />
-            </label>
-          </div>
-          <div class="campaign-grid" id="campaignGrid"></div>
-        </section>
-
         <section class="panel bulk-panel" id="bulkAds">
           <div class="panel-heading">
             <div>
@@ -382,9 +366,9 @@
                       <th>广告组编号</th>
                       <th>竞价方案</th>
                       <th>预算</th>
-                      <th>默认竞价</th>
+                      <th>批量竞价</th>
                       <th>SKU / ASIN</th>
-                      <th>投放内容</th>
+                      <th>关键词 / 单独竞价</th>
                       <th>否定词</th>
                     </tr>
                   </thead>
@@ -432,44 +416,6 @@
         </section>
 
         <section class="tool-grid">
-          <article class="panel tool-panel" id="listing">
-            <div class="panel-heading">
-              <div>
-                <p class="eyebrow">Listing</p>
-                <h2>关键词与 Listing 健康度</h2>
-              </div>
-              <div class="score-pill" id="listingScore">0</div>
-            </div>
-            <div class="listing-grid">
-              <label>
-                核心关键词
-                <textarea id="keywordInput" rows="5">travel mug, insulated coffee cup, leak proof tumbler, stainless steel bottle, car cup holder</textarea>
-              </label>
-              <label>
-                标题
-                <textarea id="titleInput" rows="5">20oz Insulated Travel Mug with Leak Proof Lid, Stainless Steel Coffee Tumbler for Car Cup Holder</textarea>
-              </label>
-              <label class="wide-field">
-                五点描述
-                <textarea id="bulletInput" rows="6">Double-wall vacuum insulation keeps drinks hot or cold.
-Leak proof lid fits commute, office, and travel use.
-Slim stainless steel body fits most car cup holders.
-BPA-free parts are easy to clean after daily coffee use.
-Gift-ready color options for home, work, and outdoor trips.</textarea>
-              </label>
-            </div>
-            <div class="keyword-output">
-              <div>
-                <span class="output-label">已覆盖</span>
-                <div class="chip-row" id="coveredKeywords"></div>
-              </div>
-              <div>
-                <span class="output-label">待补充</span>
-                <div class="chip-row" id="missingKeywords"></div>
-              </div>
-            </div>
-          </article>
-
           <article class="panel tool-panel prompt-library-panel" id="promptLibrary">
             <div class="panel-heading">
               <div>
@@ -506,7 +452,7 @@ Gift-ready color options for home, work, and outdoor trips.</textarea>
                 <div class="prompt-form-grid">
                   <label>
                     标题
-                    <input id="promptTitleInput" type="text" placeholder="例如：Listing 标题五点生成" autocomplete="off" />
+                    <input id="promptTitleInput" type="text" placeholder="例如：广告关键词优化" autocomplete="off" />
                   </label>
                   <label>
                     分类
@@ -565,7 +511,8 @@ Gift-ready color options for home, work, and outdoor trips.</textarea>
               <select id="taskType" aria-label="任务类型">
                 <option value="today">今日</option>
                 <option value="week">本周</option>
-                <option value="watch">观察</option>
+                <option value="weekend">每周末必做</option>
+                <option value="monthEnd">每月底必做</option>
               </select>
               <button class="icon-button primary" type="submit" title="添加任务">
                 <i data-lucide="plus" aria-hidden="true"></i>
@@ -577,7 +524,7 @@ Gift-ready color options for home, work, and outdoor trips.</textarea>
       </main>
     </div>
 
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=20260710-auto-target-paused"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.refreshIcons && window.refreshIcons()"></script>
   </body>
 </html>
