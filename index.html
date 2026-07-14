@@ -49,9 +49,9 @@
         </div>
 
         <nav class="nav-list">
-          <button class="nav-item" data-target="profit" title="利润测算" hidden>
+          <button class="nav-item" data-target="profit" title="利润 / FBA">
             <i data-lucide="calculator" aria-hidden="true"></i>
-            <span>利润</span>
+            <span>利润/FBA</span>
           </button>
           <button class="nav-item" data-target="inventory" title="库存补货" hidden>
             <i data-lucide="boxes" aria-hidden="true"></i>
@@ -174,69 +174,148 @@
           </div>
         </section>
 
-        <section class="tool-grid" hidden>
-          <article class="panel tool-panel" id="profit">
+        <section class="tool-grid">
+          <article class="panel tool-panel profit-fba-panel" id="profit">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Profit</p>
-                <h2>利润测算器</h2>
+                <p class="eyebrow">Profit / FBA</p>
+                <h2>利润与亚马逊物流费用</h2>
               </div>
             </div>
-            <form class="form-grid" id="profitForm">
-              <label>
-                售价
-                <input id="salePrice" type="number" min="0" step="0.01" value="29.90" />
-              </label>
-              <label>
-                采购成本
-                <input id="unitCost" type="number" min="0" step="0.01" value="8.40" />
-              </label>
-              <label>
-                佣金 %
-                <input id="referralRate" type="number" min="0" max="60" step="0.1" value="15" />
-              </label>
-              <label>
-                FBA 费用
-                <input id="fbaFee" type="number" min="0" step="0.01" value="5.65" />
-              </label>
-              <label>
-                单均广告费
-                <input id="adCost" type="number" min="0" step="0.01" value="3.20" />
-              </label>
-              <label>
-                头程/包装
-                <input id="shippingCost" type="number" min="0" step="0.01" value="1.35" />
-              </label>
-              <label>
-                退款率 %
-                <input id="refundRate" type="number" min="0" max="80" step="0.1" value="4.5" />
-              </label>
-              <label>
-                目标毛利 %
-                <input id="targetMargin" type="number" min="0" max="80" step="0.1" value="22" />
-              </label>
-            </form>
-            <div class="result-strip">
+            <div class="profit-fba-layout">
               <div>
-                <span>单件利润</span>
-                <strong id="profitValue">$0.00</strong>
+                <div class="subpanel-heading">
+                  <h3>利润计算器</h3>
+                </div>
+                <form class="form-grid" id="profitForm">
+                  <label>
+                    售价（$）
+                    <input id="salePrice" type="number" min="0" step="0.01" value="29.90" />
+                  </label>
+                  <label>
+                    采购成本（¥）
+                    <input id="unitCost" type="number" min="0" step="0.01" value="60" />
+                  </label>
+                  <label>
+                    佣金 %
+                    <input id="referralRate" type="number" min="0" max="60" step="0.1" value="15" />
+                  </label>
+                  <label>
+                    FBA 费用（$）
+                    <input id="fbaFee" type="number" min="0" step="0.01" value="5.65" />
+                  </label>
+                  <label>
+                    单均广告费（$）
+                    <input id="adCost" type="number" min="0" step="0.01" value="3.20" />
+                  </label>
+                  <label>
+                    头程/包装（¥）
+                    <input id="shippingCost" type="number" min="0" step="0.01" value="9.8" />
+                  </label>
+                  <label>
+                    退款率 %
+                    <input id="refundRate" type="number" min="0" max="80" step="0.1" value="4.5" />
+                  </label>
+                  <label>
+                    美元兑人民币汇率
+                    <input id="usdCnyRate" type="number" min="0.01" step="0.01" value="7.20" />
+                  </label>
+                  <label>
+                    目标毛利 %
+                    <input id="targetMargin" type="number" min="0" max="80" step="0.1" value="22" />
+                  </label>
+                </form>
+                <div class="result-strip">
+                  <div>
+                    <span>单件利润（$）</span>
+                    <strong id="profitValue">$0.00</strong>
+                  </div>
+                  <div>
+                    <span>单件利润（¥）</span>
+                    <strong id="profitValueCny">¥0.00</strong>
+                  </div>
+                  <div>
+                    <span>利润率</span>
+                    <strong id="profitMargin">0%</strong>
+                  </div>
+                  <div>
+                    <span>盈亏 ACOS</span>
+                    <strong id="breakEvenAcos">0%</strong>
+                  </div>
+                  <div>
+                    <span>建议底价（$）</span>
+                    <strong id="minPrice">$0.00</strong>
+                  </div>
+                </div>
               </div>
-              <div>
-                <span>利润率</span>
-                <strong id="profitMargin">0%</strong>
-              </div>
-              <div>
-                <span>盈亏 ACOS</span>
-                <strong id="breakEvenAcos">0%</strong>
-              </div>
-              <div>
-                <span>建议底价</span>
-                <strong id="minPrice">$0.00</strong>
+
+              <div class="fba-calculator">
+                <div class="subpanel-heading">
+                  <h3>FBA 物流费用计算器</h3>
+                  <span>美国站 2026 非高峰期</span>
+                </div>
+                <form class="form-grid fba-form" id="fbaFeeForm">
+                  <label class="wide-field">
+                    产品类目
+                    <select id="fbaCategory">
+                      <option value="standard">普通商品（非服装 / 非危险品）</option>
+                      <option value="apparel">服装 / 鞋靴</option>
+                      <option value="dangerous">危险品</option>
+                    </select>
+                  </label>
+                  <label>
+                    包装长（cm）
+                    <input id="fbaLength" type="number" min="0" step="0.1" value="25.4" />
+                  </label>
+                  <label>
+                    包装宽（cm）
+                    <input id="fbaWidth" type="number" min="0" step="0.1" value="17.8" />
+                  </label>
+                  <label>
+                    包装高（cm）
+                    <input id="fbaHeight" type="number" min="0" step="0.1" value="7.6" />
+                  </label>
+                  <label>
+                    包装重量（kg）
+                    <input id="fbaWeight" type="number" min="0" step="0.01" value="0.54" />
+                  </label>
+                  <label class="checkbox-field wide-field">
+                    <input id="fbaIncludeSurcharge" type="checkbox" checked />
+                    <span>包含 2026-04-17 起 3.5% 燃油/物流附加费</span>
+                  </label>
+                  <label class="checkbox-field wide-field">
+                    <input id="fbaAutoSync" type="checkbox" checked />
+                    <span>自动同步到利润计算器的 FBA 费用</span>
+                  </label>
+                </form>
+                <div class="fba-result-grid">
+                  <div>
+                    <span>尺寸分层</span>
+                    <strong id="fbaSizeTier">--</strong>
+                  </div>
+                  <div>
+                    <span>计费重量</span>
+                    <strong id="fbaShipWeight">--</strong>
+                  </div>
+                  <div>
+                    <span>基础配送费</span>
+                    <strong id="fbaBaseFee">$0.00</strong>
+                  </div>
+                  <div>
+                    <span>附加费</span>
+                    <strong id="fbaSurcharge">$0.00</strong>
+                  </div>
+                  <div class="fba-final">
+                    <span>预估 FBA 物流费</span>
+                    <strong id="fbaFinalFee">$0.00</strong>
+                  </div>
+                </div>
+                <p class="fba-policy-note" id="fbaPolicyNote"></p>
               </div>
             </div>
           </article>
 
-          <article class="panel tool-panel" id="inventory">
+          <article class="panel tool-panel" id="inventory" hidden>
             <div class="panel-heading">
               <div>
                 <p class="eyebrow">Inventory</p>
@@ -524,7 +603,7 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260710-auto-target-paused"></script>
+    <script src="app.js?v=20260714-fba-metric-units"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.refreshIcons && window.refreshIcons()"></script>
   </body>
 </html>

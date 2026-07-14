@@ -100,6 +100,13 @@ const money = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2
 });
 
+const cnyMoney = new Intl.NumberFormat("zh-CN", {
+  style: "currency",
+  currency: "CNY",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+});
+
 const percent = new Intl.NumberFormat("zh-CN", {
   style: "percent",
   maximumFractionDigits: 1
@@ -345,24 +352,231 @@ function numberValue(id) {
   return Number.parseFloat(byId(id).value) || 0;
 }
 
+const fbaSurchargeRate = 0.035;
+const fbaDimensionalWeightDivisor = 139;
+const cmPerInch = 2.54;
+const lbPerKg = 2.2046226218;
+
+const fbaRateTables = {
+  standard: {
+    smallStandard: [
+      [2, 2.43, 3.32, 3.58],
+      [4, 2.49, 3.42, 3.68],
+      [6, 2.56, 3.45, 3.71],
+      [8, 2.66, 3.54, 3.80],
+      [10, 2.77, 3.68, 3.94],
+      [12, 2.82, 3.78, 4.04],
+      [14, 2.92, 3.91, 4.17],
+      [16, 2.95, 3.96, 4.22]
+    ],
+    largeStandard: [
+      [4, 2.91, 3.73, 3.99],
+      [8, 3.13, 3.95, 4.21],
+      [12, 3.38, 4.20, 4.46],
+      [16, 3.78, 4.60, 4.86],
+      [20, 4.22, 5.04, 5.30],
+      [24, 4.60, 5.42, 5.68],
+      [28, 4.75, 5.57, 5.83],
+      [32, 5.00, 5.82, 6.08],
+      [36, 5.10, 5.92, 6.18],
+      [40, 5.28, 6.10, 6.36],
+      [44, 5.44, 6.26, 6.52],
+      [48, 5.85, 6.67, 6.93]
+    ]
+  },
+  apparel: {
+    smallStandard: [
+      [4, 3.27, 4.16, 4.42],
+      [8, 3.43, 4.31, 4.57],
+      [12, 3.60, 4.57, 4.83],
+      [16, 3.85, 4.86, 5.12]
+    ],
+    largeStandard: [
+      [4, 4.09, 4.91, 5.17],
+      [8, 4.38, 5.20, 5.46],
+      [12, 4.69, 5.51, 5.77],
+      [16, 5.13, 5.95, 6.21],
+      [20, 5.57, 6.39, 6.65],
+      [24, 5.97, 6.79, 7.05],
+      [28, 6.11, 6.93, 7.19],
+      [32, 6.31, 7.13, 7.39],
+      [36, 6.47, 7.29, 7.55],
+      [40, 6.65, 7.47, 7.73],
+      [44, 6.81, 7.63, 7.89],
+      [48, 7.01, 7.83, 8.09]
+    ]
+  },
+  dangerous: {
+    smallStandard: [
+      [4, 3.37, 4.26, 4.52],
+      [8, 3.48, 4.36, 4.62],
+      [12, 3.60, 4.57, 4.83],
+      [16, 3.75, 4.76, 5.02]
+    ],
+    largeStandard: [
+      [4, 4.33, 5.15, 5.41],
+      [8, 4.45, 5.27, 5.53],
+      [12, 4.67, 5.49, 5.75],
+      [16, 4.99, 5.81, 6.07],
+      [20, 5.44, 6.26, 6.52],
+      [24, 5.72, 6.54, 6.80],
+      [28, 5.98, 6.80, 7.06],
+      [32, 6.21, 7.03, 7.29],
+      [36, 6.38, 7.20, 7.46],
+      [40, 6.58, 7.40, 7.66],
+      [44, 6.74, 7.56, 7.82],
+      [48, 7.03, 7.85, 8.11]
+    ]
+  }
+};
+
+const fbaTierLabels = {
+  smallStandard: "小号标准尺寸",
+  largeStandard: "大号标准尺寸",
+  smallBulky: "小号大件（估算）",
+  largeBulky: "大号大件（估算）",
+  extraLarge0To50: "超大件 0-50 lb（估算）",
+  extraLarge50To70: "超大件 50-70 lb（估算）",
+  extraLarge70To150: "超大件 70-150 lb（估算）",
+  overLimit: "超出常规 FBA 尺寸"
+};
+
+function fbaPriceBand(price) {
+  if (price < 10) return 1;
+  if (price > 50) return 3;
+  return 2;
+}
+
+function fbaSortedDimensions() {
+  return [numberValue("fbaLength"), numberValue("fbaWidth"), numberValue("fbaHeight")]
+    .map((cm) => cm / cmPerInch)
+    .sort((a, b) => a - b);
+}
+
+function fbaRoundUp(value, step) {
+  return Math.ceil(value / step) * step;
+}
+
+function fbaSizeTier(dimensions, unitWeightLb) {
+  const [shortest, middle, longest] = dimensions;
+  const dimensionalWeight = dimensions.reduce((total, value) => total * Math.max(0.01, value), 1) / fbaDimensionalWeightDivisor;
+  const largeShipWeight = Math.max(unitWeightLb, dimensionalWeight);
+  const lengthPlusGirth = longest + 2 * (middle + shortest);
+
+  if (longest <= 15 && middle <= 12 && shortest <= 0.75 && unitWeightLb <= 1) {
+    return { tier: "smallStandard", shippingWeight: unitWeightLb, dimensionalWeight, estimated: false };
+  }
+  if (longest <= 18 && middle <= 14 && shortest <= 8 && largeShipWeight <= 20) {
+    return { tier: "largeStandard", shippingWeight: largeShipWeight, dimensionalWeight, estimated: false };
+  }
+  if (longest <= 37 && middle <= 30 && shortest <= 12 && largeShipWeight <= 50) {
+    return { tier: "smallBulky", shippingWeight: largeShipWeight, dimensionalWeight, estimated: true };
+  }
+  if (longest <= 59 && middle <= 33 && shortest <= 33 && lengthPlusGirth <= 130 && largeShipWeight <= 50) {
+    return { tier: "largeBulky", shippingWeight: largeShipWeight, dimensionalWeight, estimated: true };
+  }
+  if (longest <= 108 && largeShipWeight <= 50) {
+    return { tier: "extraLarge0To50", shippingWeight: largeShipWeight, dimensionalWeight, estimated: true };
+  }
+  if (longest <= 108 && largeShipWeight <= 70) {
+    return { tier: "extraLarge50To70", shippingWeight: largeShipWeight, dimensionalWeight, estimated: true };
+  }
+  if (longest <= 108 && largeShipWeight <= 150) {
+    return { tier: "extraLarge70To150", shippingWeight: largeShipWeight, dimensionalWeight, estimated: true };
+  }
+  return { tier: "overLimit", shippingWeight: largeShipWeight, dimensionalWeight, estimated: true };
+}
+
+function fbaStandardFee(category, tier, shippingWeightLb, price) {
+  const table = fbaRateTables[category]?.[tier] || fbaRateTables.standard[tier];
+  const priceIndex = fbaPriceBand(price);
+  const weightOz = Math.max(0.01, shippingWeightLb * 16);
+  if (category === "standard" && tier === "largeStandard" && weightOz > 48) {
+    const baseOver3Lb = [6.15, 6.97, 7.23][priceIndex - 1];
+    return baseOver3Lb + Math.ceil((weightOz - 48) / 4) * 0.08;
+  }
+  const matched = table.find((row) => weightOz <= row[0]) || table[table.length - 1];
+  if (weightOz <= matched[0]) return matched[priceIndex];
+
+  const extraUnits = Math.ceil((weightOz - matched[0]) / 4);
+  return matched[priceIndex] + extraUnits * 0.08;
+}
+
+function fbaBulkyFee(tier, shippingWeightLb, price) {
+  const band = fbaPriceBand(price);
+  const bases = {
+    smallBulky: [6.78, 7.55, 7.55],
+    largeBulky: [8.58, 9.35, 9.35],
+    extraLarge0To50: [25.56, 26.33, 26.60],
+    extraLarge50To70: [39.35, 40.12, 40.39],
+    extraLarge70To150: [54.13, 54.90, 55.17]
+  };
+  if (!bases[tier]) return 0;
+  const base = bases[tier][band - 1];
+  const extraWeight = Math.max(0, Math.ceil(shippingWeightLb) - 1);
+  return base + extraWeight * 0.38;
+}
+
+function calculateFbaFee() {
+  const category = byId("fbaCategory").value;
+  const price = numberValue("salePrice");
+  const unitWeightLb = numberValue("fbaWeight") * lbPerKg;
+  const tierInfo = fbaSizeTier(fbaSortedDimensions(), unitWeightLb);
+  const baseFee =
+    tierInfo.tier === "smallStandard" || tierInfo.tier === "largeStandard"
+      ? fbaStandardFee(category, tierInfo.tier, tierInfo.shippingWeight, price)
+      : fbaBulkyFee(tierInfo.tier, tierInfo.shippingWeight, price);
+  const surcharge = byId("fbaIncludeSurcharge").checked ? baseFee * fbaSurchargeRate : 0;
+  return {
+    ...tierInfo,
+    baseFee,
+    surcharge,
+    finalFee: baseFee + surcharge
+  };
+}
+
+function updateFbaCalculator() {
+  const result = calculateFbaFee();
+  byId("fbaSizeTier").textContent = fbaTierLabels[result.tier] || result.tier;
+  byId("fbaShipWeight").textContent = `${fbaRoundUp(result.shippingWeight, 0.01).toFixed(2)} lb / ${fbaRoundUp(result.shippingWeight / lbPerKg, 0.01).toFixed(2)} kg`;
+  byId("fbaBaseFee").textContent = money.format(result.baseFee);
+  byId("fbaSurcharge").textContent = money.format(result.surcharge);
+  byId("fbaFinalFee").textContent = money.format(result.finalFee);
+  byId("fbaPolicyNote").textContent =
+    result.tier === "overLimit"
+      ? "该尺寸/重量可能超出常规 FBA 配送费层级，请用 Seller Central 费用预览复核。"
+      : result.estimated
+        ? "输入单位为 cm / kg，系统已换算为 inch / lb 后按 2026 公开费率区间估算；最终费用建议以上传前 Seller Central 费用预览为准。"
+        : "输入单位为 cm / kg，系统已换算为 inch / lb 后按美国站 2026 FBA 配送费率估算，并可选择叠加 3.5% 附加费。";
+
+  if (byId("fbaAutoSync").checked && Number.isFinite(result.finalFee)) {
+    byId("fbaFee").value = result.finalFee.toFixed(2);
+  }
+}
+
 function updateProfit() {
   const price = numberValue("salePrice");
-  const unitCost = numberValue("unitCost");
+  const usdCnyRate = Math.max(0.01, numberValue("usdCnyRate") || 7.2);
+  const unitCostCny = numberValue("unitCost");
+  const unitCost = unitCostCny / usdCnyRate;
   const referralRate = numberValue("referralRate") / 100;
   const fba = numberValue("fbaFee");
   const ad = numberValue("adCost");
-  const shipping = numberValue("shippingCost");
+  const shippingCny = numberValue("shippingCost");
+  const shipping = shippingCny / usdCnyRate;
   const refundRate = numberValue("refundRate") / 100;
   const targetMargin = numberValue("targetMargin") / 100;
   const refundReserve = price * refundRate * 0.18;
   const referral = price * referralRate;
   const profit = price - unitCost - referral - fba - ad - shipping - refundReserve;
+  const profitCny = profit * usdCnyRate;
   const margin = price ? profit / price : 0;
   const breakEven = price ? (price - unitCost - referral - fba - shipping - refundReserve) / price : 0;
   const denominator = 1 - referralRate - refundRate * 0.18 - targetMargin;
   const minPrice = denominator > 0 ? (unitCost + fba + ad + shipping) / denominator : 0;
 
   byId("profitValue").textContent = money.format(profit);
+  byId("profitValueCny").textContent = cnyMoney.format(profitCny);
   byId("profitMargin").textContent = percent.format(margin);
   byId("breakEvenAcos").textContent = percent.format(Math.max(0, breakEven));
   byId("minPrice").textContent = money.format(Math.max(0, minPrice));
@@ -2205,6 +2419,7 @@ window.handleAuthSubmit = handleAuthSubmit;
 function renderAll() {
   updateKpis();
   renderSkuTable();
+  updateFbaCalculator();
   updateProfit();
   updateInventory();
   renderBulkCampaignTable();
@@ -2240,7 +2455,14 @@ function bindEvents() {
     });
   });
 
-  byId("profitForm").addEventListener("input", updateProfit);
+  byId("profitForm").addEventListener("input", (event) => {
+    if (event.target.id === "salePrice") updateFbaCalculator();
+    updateProfit();
+  });
+  byId("fbaFeeForm").addEventListener("input", () => {
+    updateFbaCalculator();
+    updateProfit();
+  });
   byId("inventoryForm").addEventListener("input", updateInventory);
   if (!byId("bulkStartDate").value) {
     byId("bulkStartDate").value = todayInputValue();

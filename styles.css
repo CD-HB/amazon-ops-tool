@@ -588,6 +588,7 @@ label {
 }
 
 label input,
+label select,
 label textarea {
   margin-top: 7px;
   color: var(--text);
@@ -622,9 +623,98 @@ label textarea {
   grid-column: 1 / -1;
 }
 
+.profit-fba-panel {
+  grid-column: 1 / -1;
+}
+
+.profit-fba-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.92fr) minmax(360px, 1.08fr);
+  gap: 16px;
+}
+
+.subpanel-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.subpanel-heading h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.subpanel-heading span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fba-calculator {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcfd;
+}
+
+.fba-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fba-result-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-top: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--line);
+}
+
+.fba-result-grid div {
+  min-height: 74px;
+  display: grid;
+  gap: 5px;
+  align-content: center;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.fba-result-grid span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.fba-result-grid strong {
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.fba-result-grid .fba-final {
+  grid-column: 1 / -1;
+  background: var(--green-soft);
+}
+
+.fba-result-grid .fba-final strong {
+  color: var(--green);
+  font-size: 22px;
+}
+
+.fba-policy-note {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .result-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
   gap: 1px;
   margin-top: 18px;
   overflow: hidden;
@@ -1429,7 +1519,8 @@ label textarea {
   }
 
   .bulk-layout,
-  .tool-grid {
+  .tool-grid,
+  .profit-fba-layout {
     grid-template-columns: 1fr;
   }
 }
@@ -1474,6 +1565,7 @@ label textarea {
 
   .kpi-grid,
   .form-grid,
+  .fba-form,
   .form-grid.compact,
   .bulk-global-form,
   .bulk-form,
