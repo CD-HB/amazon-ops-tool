@@ -61,6 +61,10 @@
             <i data-lucide="sheet" aria-hidden="true"></i>
             <span>批量广告</span>
           </button>
+          <button class="nav-item" data-target="creativeStudio" title="主图与 A+ 生成">
+            <i data-lucide="image-plus" aria-hidden="true"></i>
+            <span>主图/A+</span>
+          </button>
           <button class="nav-item" data-target="promptLibrary" title="提示词库">
             <i data-lucide="library" aria-hidden="true"></i>
             <span>提示词</span>
@@ -219,6 +223,7 @@
                   <label>
                     美元兑人民币汇率
                     <input id="usdCnyRate" type="number" min="0.01" step="0.01" value="7.20" />
+                    <span class="input-hint" id="exchangeRateStatus">自动获取最新汇率</span>
                   </label>
                   <label>
                     目标毛利 %
@@ -495,6 +500,168 @@
         </section>
 
         <section class="tool-grid">
+          <article class="panel tool-panel creative-studio-panel" id="creativeStudio">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Creative Studio</p>
+                <h2>美国站主图 / A+ 生成器</h2>
+              </div>
+              <div class="prompt-header-actions creative-header-actions">
+                <button class="icon-text-button primary" id="generateCreativePromptsButton" type="button" title="生成主图和 A+ 指令">
+                  <i data-lucide="sparkles" aria-hidden="true"></i>
+                  <span>生成指令</span>
+                </button>
+                <button class="icon-text-button" id="copyMainImagePromptButton" type="button" title="复制主图指令">
+                  <i data-lucide="copy" aria-hidden="true"></i>
+                  <span>复制主图</span>
+                </button>
+                <button class="icon-text-button" id="copyAplusPromptButton" type="button" title="复制 A+ 指令">
+                  <i data-lucide="copy" aria-hidden="true"></i>
+                  <span>复制 A+</span>
+                </button>
+                <button class="icon-text-button" id="copyAllCreativePromptButton" type="button" title="复制全部指令">
+                  <i data-lucide="copy-check" aria-hidden="true"></i>
+                  <span>复制全部</span>
+                </button>
+                <button class="icon-text-button" id="openCreativeChatGptButton" type="button" title="打开 ChatGPT">
+                  <i data-lucide="external-link" aria-hidden="true"></i>
+                  <span>打开 ChatGPT</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="creative-studio-layout">
+              <div class="creative-input-panel">
+                <div class="creative-upload">
+                  <button class="icon-text-button" id="chooseCreativeMaterialsButton" type="button" title="上传产品素材图">
+                    <i data-lucide="image-up" aria-hidden="true"></i>
+                    <span>上传素材图</span>
+                  </button>
+                  <span id="creativeMaterialSummary">未选择素材图</span>
+                  <input id="creativeMaterialInput" type="file" accept="image/*" multiple hidden />
+                </div>
+
+                <div class="creative-asset-grid" id="creativeAssetGrid" aria-live="polite">
+                  <div class="creative-empty-state">
+                    <i data-lucide="images" aria-hidden="true"></i>
+                    <span>可上传主图、细节图、场景图、包装图作为参考</span>
+                  </div>
+                </div>
+
+                <form class="creative-form" id="creativeForm">
+                  <label class="wide-field">
+                    产品标题（美国站英文）
+                    <input id="creativeTitleInput" type="text" placeholder="例如：Insulated Stainless Steel Travel Mug with Leakproof Lid" autocomplete="off" />
+                  </label>
+                  <label class="wide-field">
+                    五点描述 / 核心卖点
+                    <textarea id="creativeBulletsInput" rows="6" placeholder="每行一个卖点，建议直接粘贴美国站五点"></textarea>
+                  </label>
+                  <label>
+                    品牌名
+                    <input id="creativeBrandInput" type="text" placeholder="可选" autocomplete="off" />
+                  </label>
+                  <label>
+                    类目 / 使用场景
+                    <input id="creativeCategoryInput" type="text" placeholder="例如：Kitchen / Outdoor / Office" autocomplete="off" />
+                  </label>
+                  <label>
+                    核心关键词
+                    <input id="creativeKeywordsInput" type="text" placeholder="用逗号分隔" autocomplete="off" />
+                  </label>
+                  <label>
+                    视觉风格
+                    <select id="creativeStyleInput">
+                      <option value="clean-premium">干净高级</option>
+                      <option value="bright-commercial">明亮电商</option>
+                      <option value="warm-lifestyle">温暖生活方式</option>
+                      <option value="technical-detail">参数细节型</option>
+                    </select>
+                  </label>
+                  <label class="wide-field">
+                    补充要求
+                    <textarea id="creativeExtraInput" rows="3" placeholder="例如：强调大容量、防漏、礼品属性；避免出现人物或竞品元素"></textarea>
+                  </label>
+                </form>
+              </div>
+
+              <div class="creative-output-panel">
+                <div class="creative-output-head">
+                  <span>生成结果</span>
+                  <span id="creativeStatus" role="status">填写信息后自动生成</span>
+                </div>
+                <label>
+                  主图 ChatGPT 指令
+                  <textarea class="creative-prompt-output" id="mainImagePromptOutput" rows="14" readonly></textarea>
+                </label>
+                <label>
+                  A+ ChatGPT 指令
+                  <textarea class="creative-prompt-output" id="aplusPromptOutput" rows="18" readonly></textarea>
+                </label>
+
+                <div class="creative-api-panel">
+                  <div class="creative-output-head">
+                    <span>站内 OpenAI 生图</span>
+                    <span id="creativeGenerationStatus" role="status">等待配置接口</span>
+                  </div>
+                  <label class="wide-field">
+                    后端接口地址
+                    <input id="creativeApiEndpoint" type="url" placeholder="https://amazon-ops-tool-eight.vercel.app/api/openai-image" autocomplete="off" />
+                  </label>
+                  <div class="creative-api-grid">
+                    <label>
+                      图片尺寸
+                      <select id="creativeImageSize">
+                        <option value="1024x1024">1024 x 1024</option>
+                        <option value="2048x2048">2048 x 2048</option>
+                        <option value="1536x1024">1536 x 1024</option>
+                        <option value="1024x1536">1024 x 1536</option>
+                      </select>
+                    </label>
+                    <label>
+                      图片质量
+                      <select id="creativeImageQuality">
+                        <option value="medium">标准</option>
+                        <option value="high">高清</option>
+                        <option value="low">快速</option>
+                      </select>
+                    </label>
+                    <label>
+                      A+ 模块
+                      <select id="creativeAplusModuleSelect">
+                        <option value="hero">品牌横幅</option>
+                        <option value="benefits">核心卖点图</option>
+                        <option value="detail">细节拆解图</option>
+                        <option value="lifestyle">使用场景图</option>
+                        <option value="comparison">规格/对比图</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div class="creative-generate-actions">
+                    <button class="icon-text-button primary" id="generateMainImageButton" type="button" title="在网站内生成主图">
+                      <i data-lucide="wand-sparkles" aria-hidden="true"></i>
+                      <span>生成主图</span>
+                    </button>
+                    <button class="icon-text-button" id="generateAplusImageButton" type="button" title="在网站内生成 A+ 模块图">
+                      <i data-lucide="image" aria-hidden="true"></i>
+                      <span>生成 A+ 图</span>
+                    </button>
+                  </div>
+                  <div class="creative-result-gallery" id="creativeResultGallery">
+                    <div class="creative-empty-state compact">
+                      <i data-lucide="image" aria-hidden="true"></i>
+                      <span>生成图片会显示在这里</span>
+                    </div>
+                  </div>
+                </div>
+
+                <p class="creative-note">
+                  直接生图需要部署安全后端接口；API Key 只放在 Vercel 或 Cloudflare 的环境变量里，不要写进 GitHub Pages 前端。
+                </p>
+              </div>
+            </div>
+          </article>
+
           <article class="panel tool-panel prompt-library-panel" id="promptLibrary">
             <div class="panel-heading">
               <div>
@@ -603,7 +770,7 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260714-fba-metric-units"></script>
+    <script src="app.js?v=20260715-default-openai-endpoint"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.refreshIcons && window.refreshIcons()"></script>
   </body>
 </html>
