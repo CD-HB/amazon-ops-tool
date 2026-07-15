@@ -138,8 +138,24 @@ const negativeMatchTypeOptions = [
 const biddingStrategyOptions = [
   { value: "Dynamic bids - up and down", label: "动态竞价 - 提高和降低" },
   { value: "Dynamic bids - down only", label: "动态竞价 - 只降低" },
-  { value: "Fixed bids", label: "固定竞价" }
+  { value: "Fixed bid", label: "固定竞价" }
 ];
+
+function normalizeBiddingStrategy(value) {
+  const text = String(value || "").trim().replace(/\s+/g, " ");
+  const lower = text.toLowerCase();
+  if (!text) return "Dynamic bids - up and down";
+  if (lower === "fixed bid" || lower === "fixed bids" || lower === "fixedbid" || lower === "固定竞价") {
+    return "Fixed bid";
+  }
+  if (lower === "dynamic bids - down only" || lower.includes("down only") || lower === "仅降低") {
+    return "Dynamic bids - down only";
+  }
+  if (lower === "dynamic bids - up and down" || lower.includes("up and down") || lower === "提高和降低") {
+    return "Dynamic bids - up and down";
+  }
+  return biddingStrategyOptions.some((option) => option.value === text) ? text : "Dynamic bids - up and down";
+}
 
 const autoTargetOptions = [
   { value: "close-match", label: "紧密匹配", factor: 1 },
@@ -307,24 +323,12 @@ function readStoredAccountSnapshot() {
     bulkCampaigns: readBulkCampaigns(),
     bulkSettings: readBulkSettings(),
     prompts: readPromptLibrary(),
-    tasks: readTasks(),
-    creativeApiSettings: readCreativeApiSettings()
+    tasks: readTasks()
   };
 }
 
 function currentBulkSettingsSnapshot() {
   return byId("bulkPortfolioId") && byId("bulkMarketplace") ? getBulkSettings() : readBulkSettings();
-}
-
-function currentCreativeApiSettingsSnapshot() {
-  return byId("creativeApiEndpoint")
-    ? {
-        endpoint: byId("creativeApiEndpoint").value.trim() || defaultCreativeApiEndpoint,
-        size: byId("creativeImageSize").value || "1024x1024",
-        quality: byId("creativeImageQuality").value || "medium",
-        aplusModule: byId("creativeAplusModuleSelect").value || "hero"
-      }
-    : readCreativeApiSettings();
 }
 
 function currentAccountSnapshot(updatedAt = readAccountUpdatedAt() || new Date().toISOString()) {
@@ -335,8 +339,7 @@ function currentAccountSnapshot(updatedAt = readAccountUpdatedAt() || new Date()
     bulkCampaigns,
     bulkSettings: currentBulkSettingsSnapshot(),
     prompts: promptLibrary,
-    tasks,
-    creativeApiSettings: currentCreativeApiSettingsSnapshot()
+    tasks
   };
 }
 
@@ -349,9 +352,6 @@ function applyAccountSnapshot(snapshot) {
   }
   if (Array.isArray(snapshot.prompts)) writeJsonStorage(accountStorageKey("prompts"), snapshot.prompts);
   if (Array.isArray(snapshot.tasks)) writeJsonStorage(accountStorageKey("tasks"), snapshot.tasks);
-  if (snapshot.creativeApiSettings && typeof snapshot.creativeApiSettings === "object") {
-    writeJsonStorage(accountStorageKey("creativeApiSettings"), snapshot.creativeApiSettings);
-  }
   writeAccountUpdatedAt(snapshot.updatedAt || new Date().toISOString());
   return true;
 }
@@ -1128,7 +1128,7 @@ function getBulkSettings() {
     portfolioId: byId("bulkPortfolioId").value.trim(),
     marketplace: byId("bulkMarketplace").value,
     startDate: formatBulkDate(byId("bulkStartDate").value),
-    biddingStrategy: byId("bulkBiddingStrategy").value
+    biddingStrategy: normalizeBiddingStrategy(byId("bulkBiddingStrategy").value)
   };
 }
 
@@ -1149,7 +1149,12 @@ function saveAccountSkus() {
 
 function readBulkCampaigns() {
   const campaigns = readJsonStorage(accountStorageKey("bulkCampaigns"), defaultBulkCampaigns);
-  return Array.isArray(campaigns) && campaigns.length ? campaigns : defaultBulkCampaigns();
+  return Array.isArray(campaigns) && campaigns.length
+    ? campaigns.map((campaign) => ({
+        ...campaign,
+        biddingStrategy: normalizeBiddingStrategy(campaign.biddingStrategy)
+      }))
+    : defaultBulkCampaigns();
 }
 
 function saveBulkCampaigns() {
@@ -1168,7 +1173,7 @@ function applyBulkSettings() {
   byId("bulkPortfolioId").value = settings.portfolioId || "";
   byId("bulkMarketplace").value = settings.marketplace || "US";
   byId("bulkStartDate").value = settings.startDate || todayInputValue();
-  byId("bulkBiddingStrategy").value = settings.biddingStrategy || "Dynamic bids - up and down";
+  byId("bulkBiddingStrategy").value = normalizeBiddingStrategy(settings.biddingStrategy);
 }
 
 function saveBulkSettings() {
@@ -1200,7 +1205,7 @@ function targetPlaceholderFor(type) {
 function createBulkCampaign(overrides = {}) {
   const nextNumber = bulkCampaigns.length + 1;
   const marketplace = byId("bulkMarketplace")?.value || "US";
-  const defaultBiddingStrategy = byId("bulkBiddingStrategy")?.value || "Dynamic bids - up and down";
+  const defaultBiddingStrategy = normalizeBiddingStrategy(byId("bulkBiddingStrategy")?.value);
   return {
     id: createId("bulk-campaign"),
     enabled: true,
@@ -1288,7 +1293,7 @@ function buildRowsForCampaign(campaign, index, settings) {
   const adGroupName = adGroupNameFor(campaign, campaignName);
   const budget = readCampaignNumber(campaign, "budget", 10);
   const defaultBid = readCampaignNumber(campaign, "defaultBid", 0.45);
-  const biddingStrategy = campaign.biddingStrategy || settings.biddingStrategy;
+  const biddingStrategy = normalizeBiddingStrategy(campaign.biddingStrategy || settings.biddingStrategy);
   const targetingType = campaign.type === "auto" ? "auto" : "manual";
   const products = parseBulkProducts(campaign.products);
   const negatives = negativeEntriesForCampaign(campaign);
@@ -1765,7 +1770,7 @@ function renderBulkCampaignTable() {
           </td>
           <td>
             <select data-field="biddingStrategy" aria-label="竞价方案">
-              ${optionTags(biddingStrategyOptions, campaign.biddingStrategy || "Dynamic bids - up and down")}
+              ${optionTags(biddingStrategyOptions, normalizeBiddingStrategy(campaign.biddingStrategy))}
             </select>
           </td>
           <td>
@@ -2063,8 +2068,6 @@ async function copyBulkCsv() {
 }
 
 const promptCategories = [
-  { value: "main-image", label: "主图生成" },
-  { value: "aplus", label: "A+ 生成" },
   { value: "ads", label: "广告优化" },
   { value: "keywords", label: "关键词分类" },
   { value: "other", label: "其他" }
@@ -2329,420 +2332,6 @@ async function importPromptLibrary(file) {
   setPromptStatus(`已导入 ${normalized.length} 条`);
 }
 
-let creativeAssets = [];
-let creativeGeneratedImages = [];
-const defaultCreativeApiEndpoint = "https://amazon-ops-tool-eight.vercel.app/api/openai-image";
-
-const creativeAplusModules = {
-  hero: {
-    label: "品牌横幅",
-    ratio: "wide hero banner",
-    focus: "premium brand scene, product as the central hero, clean composition with room for headline overlay"
-  },
-  benefits: {
-    label: "核心卖点图",
-    ratio: "A+ benefit module",
-    focus: "three clear benefit zones, product repeated or angled consistently, simple visual callout areas without rendered text"
-  },
-  detail: {
-    label: "细节拆解图",
-    ratio: "technical detail module",
-    focus: "macro product details, material texture, construction, packaging or key components shown with clean callout space"
-  },
-  lifestyle: {
-    label: "使用场景图",
-    ratio: "lifestyle module",
-    focus: "realistic American consumer lifestyle setting, natural props, product visible and not blocked"
-  },
-  comparison: {
-    label: "规格/对比图",
-    ratio: "comparison module",
-    focus: "clean studio composition for specs and comparison layout, product variants or feature zones with blank space for text overlay"
-  }
-};
-
-function setCreativeStatus(text) {
-  const status = byId("creativeStatus");
-  if (status) status.textContent = text;
-}
-
-function creativeInputValue(id) {
-  return byId(id)?.value.trim() || "";
-}
-
-function selectedCreativeStyleLabel() {
-  const select = byId("creativeStyleInput");
-  return select?.options[select.selectedIndex]?.textContent || "干净高级";
-}
-
-function readCreativeInputs() {
-  return {
-    title: creativeInputValue("creativeTitleInput"),
-    bullets: creativeInputValue("creativeBulletsInput"),
-    brand: creativeInputValue("creativeBrandInput"),
-    category: creativeInputValue("creativeCategoryInput"),
-    keywords: creativeInputValue("creativeKeywordsInput"),
-    style: selectedCreativeStyleLabel(),
-    extra: creativeInputValue("creativeExtraInput")
-  };
-}
-
-function fieldOrPlaceholder(value, placeholder) {
-  return value || placeholder;
-}
-
-function creativeAssetListText() {
-  if (!creativeAssets.length) {
-    return "尚未上传素材图。请先在 ChatGPT 对话里上传产品素材图，再使用下面指令。";
-  }
-  return creativeAssets.map((asset, index) => `${index + 1}. ${asset.name}`).join("\n");
-}
-
-function creativeContextBlock(inputs) {
-  return `【产品资料】
-- 标题：${fieldOrPlaceholder(inputs.title, "待填写，请根据我上传的素材图和标题补全")}
-- 品牌：${fieldOrPlaceholder(inputs.brand, "未提供")}
-- 类目/场景：${fieldOrPlaceholder(inputs.category, "Amazon US 对应类目")}
-- 核心关键词：${fieldOrPlaceholder(inputs.keywords, "未提供")}
-- 视觉风格：${inputs.style}
-- 五点/卖点：
-${fieldOrPlaceholder(inputs.bullets, "待填写，请根据产品资料整理卖点")}
-- 补充要求：${fieldOrPlaceholder(inputs.extra, "无")}
-
-【已上传素材图文件名】
-${creativeAssetListText()}`;
-}
-
-function buildMainImagePrompt(inputs) {
-  return `请使用 ChatGPT 最新图像生成能力，为 Amazon US 站点制作一张合规的产品主图。请先分析我上传的产品素材图，识别真实产品外观、颜色、材质、结构和包装细节，再生成最终主图。
-
-${creativeContextBlock(inputs)}
-
-【主图要求】
-1. 画面比例 1:1，建议 2000 x 2000 px，背景必须是纯白色 #FFFFFF。
-2. 只展示正在销售的真实产品本体；不要添加文字、图标、徽章、边框、水印、价格、促销信息或虚构配件。
-3. 产品占画面约 85%，居中，边缘完整，不要裁切，透视自然，细节清晰。
-4. 保持素材图中的颜色、纹理、形状、比例和品牌标识真实性；不要改变产品结构。
-5. 光线干净、商业摄影质感，阴影轻微且真实，不要生活场景背景。
-6. 如果素材图信息不足，请先列出缺失信息，再给出最稳妥的主图生成方案。
-
-【请输出】
-- 最终主图生成提示词：英文，适合直接用于图像生成。
-- 负面提示词：英文，列出必须避免的元素。
-- 合规检查清单：中文，逐项说明是否符合 Amazon US 主图规则。
-- 如需二次修改，请给出 3 个可选优化方向。`;
-}
-
-function buildAplusPrompt(inputs) {
-  return `请使用 ChatGPT 最新图像与文案能力，为 Amazon US 站点生成 A+ Content 方案。请先分析我上传的产品素材图，结合标题、五点和关键词，输出适合美国消费者阅读的 A+ 模块规划、英文文案和每张图的生成指令。
-
-${creativeContextBlock(inputs)}
-
-【A+ 内容要求】
-1. 面向 Amazon US，语言使用自然、美式电商英语，卖点清晰但不过度夸张。
-2. 规划 5 个模块：品牌/场景横幅、核心卖点 3 栏、细节拆解图、使用场景图、规格/对比图。
-3. 每个模块都要包含：模块名称、建议尺寸/比例、英文标题、英文短文案、图片生成提示词、图片中可放置的简短英文文案、Alt text。
-4. 图片风格与素材图保持一致，产品外观必须真实；生活方式图可以有场景和道具，但不能让产品被遮挡。
-5. 避免医疗/治疗/保证性承诺、绝对化词汇、价格、折扣、评论星级、竞品名称、平台外引导和夸大认证。
-6. 文案需要突出与标题、五点、关键词一致的购买理由，并适合美国站页面展示。
-
-【请输出】
-- A+ 整体创意方向：中文说明。
-- 5 个 A+ 模块的完整表格。
-- 每张图片的英文生成提示词和负面提示词。
-- 页面最终英文文案合集。
-- Amazon US 合规风险提醒。`;
-}
-
-function buildMainImageGenerationPrompt(inputs) {
-  return `Create a photorealistic Amazon US main product image for: ${fieldOrPlaceholder(inputs.title, "the uploaded product")}.
-Use the uploaded reference images to preserve the exact product shape, color, material, packaging, branding, proportions, and visible details.
-Requirements: pure white #FFFFFF background, square ecommerce composition, product centered and filling about 85% of the frame, full product visible with no cropping, crisp commercial lighting, soft natural shadow, high detail, realistic material texture.
-Do not add text, badges, icons, price, watermark, border, lifestyle background, hands, people, extra props, competitor products, or accessories that are not included with the product.
-Category/context: ${fieldOrPlaceholder(inputs.category, "Amazon US ecommerce")}.
-Core selling points to respect visually: ${fieldOrPlaceholder(inputs.bullets, "use only what is visible and supported by the reference images")}.
-Additional constraints: ${fieldOrPlaceholder(inputs.extra, "none")}.`;
-}
-
-function buildAplusImageGenerationPrompt(inputs, moduleKey) {
-  const module = creativeAplusModules[moduleKey] || creativeAplusModules.hero;
-  return `Create a photorealistic Amazon US A+ content image for the ${module.label} module.
-Product: ${fieldOrPlaceholder(inputs.title, "the uploaded product")}.
-Use the uploaded reference images to keep the product accurate and recognizable.
-Visual direction: ${module.focus}.
-Style: ${inputs.style}. Category/context: ${fieldOrPlaceholder(inputs.category, "Amazon US ecommerce")}.
-Core keywords: ${fieldOrPlaceholder(inputs.keywords, "none")}.
-Selling points to support visually: ${fieldOrPlaceholder(inputs.bullets, "use product benefits that are supported by the provided information")}.
-Composition: ${module.ratio}, premium ecommerce quality, clean space for later text overlay, consistent lighting, realistic material, sharp product details.
-Avoid medical claims, guarantee language, price, discount, star ratings, platform logos, competitor branding, clutter, distorted product geometry, unreadable text, or unsupported accessories.
-Additional constraints: ${fieldOrPlaceholder(inputs.extra, "none")}.`;
-}
-
-function renderCreativePrompts() {
-  const inputs = readCreativeInputs();
-  const mainOutput = byId("mainImagePromptOutput");
-  const aplusOutput = byId("aplusPromptOutput");
-  if (mainOutput) mainOutput.value = buildMainImagePrompt(inputs);
-  if (aplusOutput) aplusOutput.value = buildAplusPrompt(inputs);
-}
-
-function renderCreativeAssets() {
-  const summary = byId("creativeMaterialSummary");
-  const grid = byId("creativeAssetGrid");
-  if (summary) summary.textContent = creativeAssets.length ? `已选择 ${creativeAssets.length} 张素材图` : "未选择素材图";
-  if (!grid) return;
-  if (!creativeAssets.length) {
-    grid.innerHTML = `
-      <div class="creative-empty-state">
-        <i data-lucide="images" aria-hidden="true"></i>
-        <span>可上传主图、细节图、场景图、包装图作为参考</span>
-      </div>
-    `;
-    refreshIcons();
-    return;
-  }
-  grid.innerHTML = creativeAssets
-    .map(
-      (asset, index) => `
-        <div class="creative-asset-card">
-          ${
-            asset.url
-              ? `<img src="${asset.url}" alt="素材图 ${index + 1}" />`
-              : `<div class="creative-asset-loading">读取中</div>`
-          }
-          <span title="${escapeHtml(asset.name)}">${escapeHtml(asset.name)}</span>
-        </div>
-      `
-    )
-    .join("");
-}
-
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => resolve(String(reader.result || "")));
-    reader.addEventListener("error", reject);
-    reader.readAsDataURL(file);
-  });
-}
-
-function resizeCreativeImageFile(file, maxEdge = 1536) {
-  return new Promise((resolve) => {
-    const objectUrl = URL.createObjectURL(file);
-    const image = new Image();
-    image.addEventListener("load", () => {
-      const sourceWidth = image.naturalWidth || image.width || maxEdge;
-      const sourceHeight = image.naturalHeight || image.height || maxEdge;
-      const scale = Math.min(1, maxEdge / Math.max(sourceWidth, sourceHeight));
-      const width = Math.max(1, Math.round(sourceWidth * scale));
-      const height = Math.max(1, Math.round(sourceHeight * scale));
-      const canvas = document.createElement("canvas");
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext("2d");
-      context.fillStyle = "#ffffff";
-      context.fillRect(0, 0, width, height);
-      context.drawImage(image, 0, 0, width, height);
-      URL.revokeObjectURL(objectUrl);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.88);
-      resolve({ url: dataUrl, apiData: dataUrl, mime: "image/jpeg" });
-    });
-    image.addEventListener("error", async () => {
-      URL.revokeObjectURL(objectUrl);
-      const dataUrl = await readFileAsDataUrl(file).catch(() => "");
-      resolve({ url: dataUrl, apiData: dataUrl, mime: file.type || "image/png" });
-    });
-    image.src = objectUrl;
-  });
-}
-
-async function handleCreativeMaterialFiles(files) {
-  const selected = Array.from(files || []).filter((file) => file.type.startsWith("image/")).slice(0, 12);
-  if (!selected.length) {
-    creativeAssets = [];
-    renderCreativeAssets();
-    renderCreativePrompts();
-    setCreativeStatus("未选择图片");
-    return;
-  }
-
-  creativeAssets = selected.map((file) => ({
-    name: file.name,
-    url: "",
-    size: file.size
-  }));
-  renderCreativeAssets();
-  setCreativeStatus("正在读取素材图");
-
-  const processed = await Promise.all(selected.map((file) => resizeCreativeImageFile(file)));
-  creativeAssets = creativeAssets.map((asset, index) => ({
-    ...asset,
-    url: processed[index]?.url || "",
-    apiData: processed[index]?.apiData || "",
-    mime: processed[index]?.mime || "image/jpeg"
-  }));
-  renderCreativeAssets();
-  renderCreativePrompts();
-  setCreativeStatus(`已载入 ${selected.length} 张素材图`);
-}
-
-async function copyCreativePrompt(outputId, statusText) {
-  const value = byId(outputId)?.value || "";
-  await copyText(value);
-  setCreativeStatus(statusText);
-}
-
-async function copyAllCreativePrompts() {
-  const main = byId("mainImagePromptOutput")?.value || "";
-  const aplus = byId("aplusPromptOutput")?.value || "";
-  await copyText(`【主图指令】\n${main}\n\n【A+ 指令】\n${aplus}`);
-  setCreativeStatus("已复制全部指令");
-}
-
-function readCreativeApiSettings() {
-  return readJsonStorage(accountStorageKey("creativeApiSettings"), {
-    endpoint: defaultCreativeApiEndpoint,
-    size: "1024x1024",
-    quality: "medium",
-    aplusModule: "hero"
-  });
-}
-
-function applyCreativeApiSettings() {
-  const settings = readCreativeApiSettings();
-  const endpoint = settings.endpoint || defaultCreativeApiEndpoint;
-  byId("creativeApiEndpoint").value = endpoint;
-  byId("creativeImageSize").value = settings.size || "1024x1024";
-  byId("creativeImageQuality").value = settings.quality || "medium";
-  byId("creativeAplusModuleSelect").value = settings.aplusModule || "hero";
-  setCreativeGenerationStatus(endpoint ? "已配置默认接口" : "等待配置接口");
-}
-
-function saveCreativeApiSettings() {
-  if (!currentAccountPhone) return;
-  writeJsonStorage(accountStorageKey("creativeApiSettings"), {
-    endpoint: byId("creativeApiEndpoint")?.value.trim() || "",
-    size: byId("creativeImageSize")?.value || "1024x1024",
-    quality: byId("creativeImageQuality")?.value || "medium",
-    aplusModule: byId("creativeAplusModuleSelect")?.value || "hero"
-  });
-  markAccountDataChanged();
-}
-
-function setCreativeGenerationStatus(text) {
-  const status = byId("creativeGenerationStatus");
-  if (status) status.textContent = text;
-}
-
-function renderCreativeResultGallery() {
-  const gallery = byId("creativeResultGallery");
-  if (!gallery) return;
-  if (!creativeGeneratedImages.length) {
-    gallery.innerHTML = `
-      <div class="creative-empty-state compact">
-        <i data-lucide="image" aria-hidden="true"></i>
-        <span>生成图片会显示在这里</span>
-      </div>
-    `;
-    refreshIcons();
-    return;
-  }
-  gallery.innerHTML = creativeGeneratedImages
-    .map(
-      (image) => `
-        <article class="creative-result-card">
-          <img src="${image.url}" alt="${escapeHtml(image.label)}" />
-          <div>
-            <strong>${escapeHtml(image.label)}</strong>
-            <span>${escapeHtml(image.createdAt)}</span>
-          </div>
-          <div class="creative-result-actions">
-            <a class="icon-text-button" href="${image.url}" download="${escapeHtml(image.filename)}" title="下载图片">
-              <i data-lucide="download" aria-hidden="true"></i>
-              <span>下载</span>
-            </a>
-            <button class="icon-text-button" type="button" data-creative-copy-prompt="${escapeHtml(image.id)}" title="复制本次生图提示词">
-              <i data-lucide="copy" aria-hidden="true"></i>
-              <span>复制提示词</span>
-            </button>
-          </div>
-        </article>
-      `
-    )
-    .join("");
-  refreshIcons();
-}
-
-function creativeReferenceImagesForApi() {
-  return creativeAssets
-    .filter((asset) => asset.apiData)
-    .slice(0, 4)
-    .map((asset) => ({
-      name: asset.name,
-      dataUrl: asset.apiData,
-      mime: asset.mime || "image/jpeg"
-    }));
-}
-
-function normalizeGeneratedImageUrl(image) {
-  if (typeof image === "string") return image.startsWith("data:") ? image : `data:image/png;base64,${image}`;
-  if (image?.url) return image.url;
-  if (image?.dataUrl) return image.dataUrl;
-  if (image?.b64_json) return `data:image/png;base64,${image.b64_json}`;
-  return "";
-}
-
-async function generateCreativeImage(kind) {
-  saveCreativeApiSettings();
-  const endpoint = byId("creativeApiEndpoint")?.value.trim() || defaultCreativeApiEndpoint;
-  if (!endpoint) {
-    setCreativeGenerationStatus("请先填写后端接口地址");
-    return;
-  }
-
-  const inputs = readCreativeInputs();
-  const aplusModule = byId("creativeAplusModuleSelect")?.value || "hero";
-  const prompt =
-    kind === "main"
-      ? buildMainImageGenerationPrompt(inputs)
-      : buildAplusImageGenerationPrompt(inputs, aplusModule);
-  const label = kind === "main" ? "主图" : `A+ ${creativeAplusModules[aplusModule]?.label || "模块图"}`;
-  const images = creativeReferenceImagesForApi();
-
-  setCreativeGenerationStatus(`正在生成${label}...`);
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      kind,
-      prompt,
-      images,
-      size: byId("creativeImageSize")?.value || "1024x1024",
-      quality: byId("creativeImageQuality")?.value || "medium"
-    })
-  });
-
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(payload.error || `生成失败：${response.status}`);
-  }
-  const urls = (payload.images || payload.data || [payload.image]).map(normalizeGeneratedImageUrl).filter(Boolean);
-  if (!urls.length) throw new Error("接口没有返回图片");
-
-  const now = new Date().toLocaleString("zh-CN");
-  const created = urls.map((url, index) => ({
-    id: createId("creative-image"),
-    url,
-    label: urls.length > 1 ? `${label} ${index + 1}` : label,
-    filename: `sellerops-${kind}-${Date.now()}-${index + 1}.png`,
-    prompt,
-    createdAt: now
-  }));
-  creativeGeneratedImages = [...created, ...creativeGeneratedImages].slice(0, 8);
-  renderCreativeResultGallery();
-  setCreativeGenerationStatus(`已生成 ${created.length} 张${label}`);
-}
-
 const taskGroups = [
   { value: "today", label: "今日", title: "今日任务" },
   { value: "week", label: "本周", title: "本周任务" },
@@ -2958,11 +2547,9 @@ function loadAccountData() {
   bulkCampaigns = readBulkCampaigns();
   promptLibrary = readPromptLibrary();
   tasks = readTasks();
-  creativeGeneratedImages = [];
   promptCategoryFilter = "all";
   editingPromptId = "";
   applyBulkSettings();
-  applyCreativeApiSettings();
   renderAccountState();
   renderAll();
 }
@@ -3007,7 +2594,6 @@ function logoutAccount() {
   bulkCampaigns = defaultBulkCampaigns();
   promptLibrary = [];
   tasks = defaultTasks();
-  creativeGeneratedImages = [];
   byId("phoneInput").value = "";
   byId("passwordInput").value = "";
   setAuthStatus("");
@@ -3063,9 +2649,6 @@ function renderAll() {
   updateInventory();
   renderBulkCampaignTable();
   renderBulkAds();
-  renderCreativeAssets();
-  renderCreativePrompts();
-  renderCreativeResultGallery();
   renderPromptLibrary();
   renderTasks();
 }
@@ -3197,51 +2780,6 @@ function bindEvents() {
   byId("downloadBulkButton").addEventListener("click", downloadBulkWorkbook);
   byId("copyBulkButton").addEventListener("click", () => {
     copyBulkCsv().catch(() => {});
-  });
-
-  byId("chooseCreativeMaterialsButton").addEventListener("click", () => byId("creativeMaterialInput").click());
-  byId("creativeMaterialInput").addEventListener("change", (event) => {
-    handleCreativeMaterialFiles(event.target.files).catch(() => setCreativeStatus("素材读取失败"));
-    event.target.value = "";
-  });
-  byId("creativeForm").addEventListener("input", () => {
-    renderCreativePrompts();
-    setCreativeStatus("已更新指令");
-  });
-  byId("creativeForm").addEventListener("change", () => {
-    renderCreativePrompts();
-    setCreativeStatus("已更新指令");
-  });
-  byId("generateCreativePromptsButton").addEventListener("click", () => {
-    renderCreativePrompts();
-    setCreativeStatus("已生成主图和 A+ 指令");
-  });
-  byId("copyMainImagePromptButton").addEventListener("click", () => {
-    copyCreativePrompt("mainImagePromptOutput", "已复制主图指令").catch(() => setCreativeStatus("复制失败"));
-  });
-  byId("copyAplusPromptButton").addEventListener("click", () => {
-    copyCreativePrompt("aplusPromptOutput", "已复制 A+ 指令").catch(() => setCreativeStatus("复制失败"));
-  });
-  byId("copyAllCreativePromptButton").addEventListener("click", () => {
-    copyAllCreativePrompts().catch(() => setCreativeStatus("复制失败"));
-  });
-  byId("openCreativeChatGptButton").addEventListener("click", openChatGpt);
-  ["creativeApiEndpoint", "creativeImageSize", "creativeImageQuality", "creativeAplusModuleSelect"].forEach((id) => {
-    byId(id).addEventListener("change", saveCreativeApiSettings);
-  });
-  byId("creativeApiEndpoint").addEventListener("input", saveCreativeApiSettings);
-  byId("generateMainImageButton").addEventListener("click", () => {
-    generateCreativeImage("main").catch((error) => setCreativeGenerationStatus(error.message || "生成失败"));
-  });
-  byId("generateAplusImageButton").addEventListener("click", () => {
-    generateCreativeImage("aplus").catch((error) => setCreativeGenerationStatus(error.message || "生成失败"));
-  });
-  byId("creativeResultGallery").addEventListener("click", (event) => {
-    const button = event.target.closest("[data-creative-copy-prompt]");
-    if (!button) return;
-    const image = creativeGeneratedImages.find((item) => item.id === button.dataset.creativeCopyPrompt);
-    if (!image) return;
-    copyText(image.prompt).then(() => setCreativeGenerationStatus("已复制本次提示词")).catch(() => setCreativeGenerationStatus("复制失败"));
   });
 
   byId("promptForm").addEventListener("submit", (event) => {

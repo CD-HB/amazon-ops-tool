@@ -1,0 +1,10 @@
+{
+  "name": "amazon-assistant-tool",
+  "version": "1.0.0",
+  "private": true,
+  "description": "亚马逊运营辅助工具静态网站",
+  "scripts": {
+    "start": "python -m http.server 4186",
+    "check": "node --check app.js"
+  }
+}
