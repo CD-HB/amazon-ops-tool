@@ -516,7 +516,33 @@ function numberValue(id) {
   return Number.parseFloat(byId(id).value) || 0;
 }
 
-const exchangeRateApiUrl = "https://api.frankfurter.app/latest?from=USD&to=CNY";
+const profitMarketplaceConfigs = {
+  US: {
+    label: "美国站",
+    exchangeLabel: "美元兑人民币汇率",
+    currency: "USD",
+    symbol: "$",
+    locale: "en-US",
+    defaultRate: 7.2
+  },
+  CA: {
+    label: "加拿大站",
+    exchangeLabel: "加元兑人民币汇率",
+    currency: "CAD",
+    symbol: "CA$",
+    locale: "en-CA",
+    defaultRate: 5.3
+  },
+  UK: {
+    label: "英国站",
+    exchangeLabel: "英镑兑人民币汇率",
+    currency: "GBP",
+    symbol: "£",
+    locale: "en-GB",
+    defaultRate: 9.2
+  }
+};
+
 let exchangeRateManuallyEdited = false;
 
 function setExchangeRateStatus(message) {
@@ -524,12 +550,44 @@ function setExchangeRateStatus(message) {
   if (status) status.textContent = message || "";
 }
 
+function getProfitMarketplaceConfig() {
+  const selected = byId("profitMarketplace")?.value || "US";
+  return profitMarketplaceConfigs[selected] || profitMarketplaceConfigs.US;
+}
+
+function formatProfitMoney(value, config = getProfitMarketplaceConfig()) {
+  return new Intl.NumberFormat(config.locale, {
+    style: "currency",
+    currency: config.currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(value);
+}
+
+function updateProfitCurrencyLabels() {
+  const config = getProfitMarketplaceConfig();
+  [
+    "salePriceCurrencyLabel",
+    "fbaFeeCurrencyLabel",
+    "adCostCurrencyLabel",
+    "profitCurrencyLabel",
+    "minPriceCurrencyLabel"
+  ].forEach((id) => {
+    const element = byId(id);
+    if (element) element.textContent = config.symbol;
+  });
+  const exchangeLabel = byId("exchangeRateLabel");
+  if (exchangeLabel) exchangeLabel.textContent = config.exchangeLabel;
+}
+
 async function refreshExchangeRate() {
   const input = byId("usdCnyRate");
   if (!input) return;
+  const config = getProfitMarketplaceConfig();
+  const apiUrl = `https://api.frankfurter.app/latest?from=${encodeURIComponent(config.currency)}&to=CNY`;
   setExchangeRateStatus("正在获取最新汇率...");
   try {
-    const response = await fetch(exchangeRateApiUrl, { cache: "no-store" });
+    const response = await fetch(apiUrl, { cache: "no-store" });
     if (!response.ok) throw new Error("Exchange rate request failed");
     const data = await response.json();
     const rate = Number(data?.rates?.CNY);
@@ -539,8 +597,12 @@ async function refreshExchangeRate() {
       updateProfit();
     }
     const dateText = data?.date ? `，${data.date}` : "";
-    setExchangeRateStatus(`自动汇率：1 USD = ${rate.toFixed(4)} CNY${dateText}`);
+    setExchangeRateStatus(`自动汇率：1 ${config.currency} = ${rate.toFixed(4)} CNY${dateText}`);
   } catch {
+    if (!exchangeRateManuallyEdited && config.defaultRate) {
+      input.value = config.defaultRate.toFixed(2);
+      updateProfit();
+    }
     setExchangeRateStatus("自动汇率获取失败，可手动填写");
   }
 }
@@ -730,49 +792,59 @@ function calculateFbaFee() {
 
 function updateFbaCalculator() {
   const result = calculateFbaFee();
+  const profitConfig = getProfitMarketplaceConfig();
+  const canSyncToProfit = profitConfig.currency === "USD";
+  const fbaAutoSync = byId("fbaAutoSync");
+  if (fbaAutoSync) fbaAutoSync.disabled = !canSyncToProfit;
   byId("fbaSizeTier").textContent = fbaTierLabels[result.tier] || result.tier;
   byId("fbaShipWeight").textContent = `${fbaRoundUp(result.shippingWeight, 0.01).toFixed(2)} lb / ${fbaRoundUp(result.shippingWeight / lbPerKg, 0.01).toFixed(2)} kg`;
   byId("fbaBaseFee").textContent = money.format(result.baseFee);
   byId("fbaSurcharge").textContent = money.format(result.surcharge);
   byId("fbaFinalFee").textContent = money.format(result.finalFee);
-  byId("fbaPolicyNote").textContent =
+  const policyNote =
     result.tier === "overLimit"
       ? "该尺寸/重量可能超出常规 FBA 配送费层级，请用 Seller Central 费用预览复核。"
       : result.estimated
         ? "输入单位为 cm / kg，系统已换算为 inch / lb 后按 2026 公开费率区间估算；最终费用建议以上传前 Seller Central 费用预览为准。"
         : "输入单位为 cm / kg，系统已换算为 inch / lb 后按美国站 2026 FBA 配送费率估算，并可选择叠加 3.5% 附加费。";
+  const marketplaceNote = canSyncToProfit
+    ? ""
+    : `当前利润计算选择${profitConfig.label}，详细 FBA 费率仍按美国站展示；请在利润计算器里手动填写${profitConfig.symbol} FBA 费用。`;
+  byId("fbaPolicyNote").textContent = [policyNote, marketplaceNote].filter(Boolean).join(" ");
 
-  if (byId("fbaAutoSync").checked && Number.isFinite(result.finalFee)) {
+  if (canSyncToProfit && fbaAutoSync?.checked && Number.isFinite(result.finalFee)) {
     byId("fbaFee").value = result.finalFee.toFixed(2);
   }
 }
 
 function updateProfit() {
+  updateProfitCurrencyLabels();
+  const config = getProfitMarketplaceConfig();
   const price = numberValue("salePrice");
-  const usdCnyRate = Math.max(0.01, numberValue("usdCnyRate") || 7.2);
+  const cnyRate = Math.max(0.01, numberValue("usdCnyRate") || config.defaultRate);
   const unitCostCny = numberValue("unitCost");
-  const unitCost = unitCostCny / usdCnyRate;
+  const unitCost = unitCostCny / cnyRate;
   const referralRate = numberValue("referralRate") / 100;
   const fba = numberValue("fbaFee");
   const ad = numberValue("adCost");
   const shippingCny = numberValue("shippingCost");
-  const shipping = shippingCny / usdCnyRate;
+  const shipping = shippingCny / cnyRate;
   const refundRate = numberValue("refundRate") / 100;
   const targetMargin = numberValue("targetMargin") / 100;
   const refundReserve = price * refundRate * 0.18;
   const referral = price * referralRate;
   const profit = price - unitCost - referral - fba - ad - shipping - refundReserve;
-  const profitCny = profit * usdCnyRate;
+  const profitCny = profit * cnyRate;
   const margin = price ? profit / price : 0;
   const breakEven = price ? (price - unitCost - referral - fba - shipping - refundReserve) / price : 0;
   const denominator = 1 - referralRate - refundRate * 0.18 - targetMargin;
   const minPrice = denominator > 0 ? (unitCost + fba + ad + shipping) / denominator : 0;
 
-  byId("profitValue").textContent = money.format(profit);
+  byId("profitValue").textContent = formatProfitMoney(profit, config);
   byId("profitValueCny").textContent = cnyMoney.format(profitCny);
   byId("profitMargin").textContent = percent.format(margin);
   byId("breakEvenAcos").textContent = percent.format(Math.max(0, breakEven));
-  byId("minPrice").textContent = money.format(Math.max(0, minPrice));
+  byId("minPrice").textContent = formatProfitMoney(Math.max(0, minPrice), config);
 }
 
 function updateInventory() {
@@ -2680,6 +2752,15 @@ function bindEvents() {
     });
   });
 
+  byId("profitMarketplace").addEventListener("change", () => {
+    const config = getProfitMarketplaceConfig();
+    exchangeRateManuallyEdited = false;
+    byId("usdCnyRate").value = config.defaultRate.toFixed(2);
+    updateProfitCurrencyLabels();
+    updateFbaCalculator();
+    updateProfit();
+    refreshExchangeRate();
+  });
   byId("profitForm").addEventListener("input", (event) => {
     if (event.target.id === "usdCnyRate") {
       exchangeRateManuallyEdited = true;

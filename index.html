@@ -190,7 +190,15 @@
                 </div>
                 <form class="form-grid" id="profitForm">
                   <label>
-                    售价（$）
+                    站点
+                    <select id="profitMarketplace">
+                      <option value="US">美国站（USD $）</option>
+                      <option value="CA">加拿大站（CAD CA$）</option>
+                      <option value="UK">英国站（GBP £）</option>
+                    </select>
+                  </label>
+                  <label>
+                    售价（<span id="salePriceCurrencyLabel">$</span>）
                     <input id="salePrice" type="number" min="0" step="0.01" value="29.90" />
                   </label>
                   <label>
@@ -202,11 +210,11 @@
                     <input id="referralRate" type="number" min="0" max="60" step="0.1" value="15" />
                   </label>
                   <label>
-                    FBA 费用（$）
+                    FBA 费用（<span id="fbaFeeCurrencyLabel">$</span>）
                     <input id="fbaFee" type="number" min="0" step="0.01" value="5.65" />
                   </label>
                   <label>
-                    单均广告费（$）
+                    单均广告费（<span id="adCostCurrencyLabel">$</span>）
                     <input id="adCost" type="number" min="0" step="0.01" value="3.20" />
                   </label>
                   <label>
@@ -218,7 +226,7 @@
                     <input id="refundRate" type="number" min="0" max="80" step="0.1" value="4.5" />
                   </label>
                   <label>
-                    美元兑人民币汇率
+                    <span id="exchangeRateLabel">美元兑人民币汇率</span>
                     <input id="usdCnyRate" type="number" min="0.01" step="0.01" value="7.20" />
                     <span class="input-hint" id="exchangeRateStatus">自动获取最新汇率</span>
                   </label>
@@ -229,7 +237,7 @@
                 </form>
                 <div class="result-strip">
                   <div>
-                    <span>单件利润（$）</span>
+                    <span>单件利润（<span id="profitCurrencyLabel">$</span>）</span>
                     <strong id="profitValue">$0.00</strong>
                   </div>
                   <div>
@@ -245,7 +253,7 @@
                     <strong id="breakEvenAcos">0%</strong>
                   </div>
                   <div>
-                    <span>建议底价（$）</span>
+                    <span>建议底价（<span id="minPriceCurrencyLabel">$</span>）</span>
                     <strong id="minPrice">$0.00</strong>
                   </div>
                 </div>
@@ -605,7 +613,7 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260715-no-image-module"></script>
+    <script src="app.js?v=20260715-ca-uk-profit"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.refreshIcons && window.refreshIcons()"></script>
   </body>
 </html>
