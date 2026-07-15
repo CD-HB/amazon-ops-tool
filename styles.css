@@ -303,6 +303,32 @@ h2 {
   white-space: nowrap;
 }
 
+.sync-status {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: #eef2f5;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.sync-status.is-syncing {
+  background: var(--blue-soft);
+  color: var(--blue);
+}
+
+.sync-status.is-synced {
+  background: var(--green-soft);
+  color: var(--green);
+}
+
+.sync-status.is-local,
+.sync-status.is-error {
+  background: var(--amber-soft);
+  color: var(--amber);
+}
+
 .account-chip > svg {
   width: 18px;
   height: 18px;
@@ -571,6 +597,10 @@ tr:last-child td {
   grid-column: 1 / -1;
 }
 
+.creative-studio-panel {
+  grid-column: 1 / -1;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -593,6 +623,14 @@ label textarea {
   margin-top: 7px;
   color: var(--text);
   font-weight: 500;
+}
+
+.input-hint {
+  display: block;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .checkbox-field {
@@ -1226,6 +1264,233 @@ label textarea {
   gap: 10px;
 }
 
+.creative-studio-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  gap: 14px;
+  margin-top: 14px;
+  align-items: start;
+}
+
+.creative-input-panel,
+.creative-output-panel {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fbfcfd;
+}
+
+.creative-upload {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.creative-upload > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.creative-asset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 9px;
+  min-height: 112px;
+  margin-bottom: 14px;
+}
+
+.creative-empty-state {
+  grid-column: 1 / -1;
+  min-height: 112px;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 14px;
+  border: 1px dashed #cad5dc;
+  border-radius: var(--radius);
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 700;
+  background: #ffffff;
+}
+
+.creative-empty-state.compact {
+  min-height: 92px;
+}
+
+.creative-empty-state svg {
+  width: 26px;
+  height: 26px;
+}
+
+.creative-asset-card {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #ffffff;
+}
+
+.creative-asset-card img {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #f4f7f9;
+}
+
+.creative-asset-loading {
+  width: 100%;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: #f4f7f9;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.creative-asset-card span {
+  display: block;
+  margin-top: 7px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.creative-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.creative-form input,
+.creative-form select,
+.creative-form textarea,
+.creative-output-panel textarea {
+  width: 100%;
+}
+
+.creative-output-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.creative-output-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.creative-output-head span:first-child {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.creative-output-head span:last-child {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.creative-prompt-output {
+  min-height: 260px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.creative-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.creative-api-panel {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid #dbe5ea;
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.creative-api-panel input,
+.creative-api-panel select {
+  width: 100%;
+}
+
+.creative-api-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.creative-generate-actions,
+.creative-result-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.creative-result-gallery {
+  display: grid;
+  gap: 10px;
+}
+
+.creative-result-card {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fbfcfd;
+}
+
+.creative-result-card img {
+  width: 128px;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.creative-result-card strong,
+.creative-result-card span {
+  display: block;
+}
+
+.creative-result-card strong {
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.creative-result-card span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.creative-result-actions {
+  grid-column: 1 / -1;
+}
+
 .prompt-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.32fr);
@@ -1520,7 +1785,8 @@ label textarea {
 
   .bulk-layout,
   .tool-grid,
-  .profit-fba-layout {
+  .profit-fba-layout,
+  .creative-studio-layout {
     grid-template-columns: 1fr;
   }
 }
@@ -1571,6 +1837,8 @@ label textarea {
   .bulk-form,
   .prompt-toolbar,
   .prompt-library-layout,
+  .creative-form,
+  .creative-api-grid,
   .prompt-form-grid,
   .result-strip {
     grid-template-columns: 1fr;
@@ -1599,6 +1867,8 @@ label textarea {
   .bulk-actions,
   .prompt-header-actions,
   .prompt-form-actions,
+  .creative-generate-actions,
+  .creative-result-actions,
   .segmented {
     width: 100%;
   }
@@ -1618,6 +1888,14 @@ label textarea {
 
   .task-form {
     grid-template-columns: 1fr;
+  }
+
+  .creative-result-card {
+    grid-template-columns: 1fr;
+  }
+
+  .creative-result-card img {
+    width: 100%;
   }
 
   h1 {

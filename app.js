@@ -86,6 +86,12 @@ const currentAccountKey = "sellerops.currentPhone";
 const accountStoragePrefix = "sellerops.account";
 
 let currentAccountPhone = normalizePhone(localStorage.getItem(currentAccountKey) || "");
+let currentAccountPasswordHash = "";
+const defaultCloudSyncEndpoint = "https://amazon-ops-tool-eight.vercel.app/api/account-sync";
+let cloudSyncTimer = 0;
+let cloudSyncInFlight = false;
+let cloudSyncQueued = false;
+let cloudSyncEnabled = true;
 
 const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -270,6 +276,164 @@ function readAccounts() {
 
 function saveAccounts(accounts) {
   writeJsonStorage(accountRegistryKey, accounts);
+}
+
+function setCloudSyncStatus(text, stateName = "local") {
+  const status = byId("cloudSyncStatus");
+  if (!status) return;
+  status.textContent = text;
+  status.className = `sync-status is-${stateName}`;
+}
+
+function accountUpdatedAtKey() {
+  return accountStorageKey("updatedAt");
+}
+
+function readAccountUpdatedAt() {
+  return currentAccountPhone ? localStorage.getItem(accountUpdatedAtKey()) || "" : "";
+}
+
+function writeAccountUpdatedAt(value = new Date().toISOString()) {
+  if (!currentAccountPhone) return "";
+  localStorage.setItem(accountUpdatedAtKey(), value);
+  return value;
+}
+
+function readStoredAccountSnapshot() {
+  return {
+    version: 2,
+    updatedAt: readAccountUpdatedAt() || new Date().toISOString(),
+    skus: readAccountSkus(),
+    bulkCampaigns: readBulkCampaigns(),
+    bulkSettings: readBulkSettings(),
+    prompts: readPromptLibrary(),
+    tasks: readTasks(),
+    creativeApiSettings: readCreativeApiSettings()
+  };
+}
+
+function currentBulkSettingsSnapshot() {
+  return byId("bulkPortfolioId") && byId("bulkMarketplace") ? getBulkSettings() : readBulkSettings();
+}
+
+function currentCreativeApiSettingsSnapshot() {
+  return byId("creativeApiEndpoint")
+    ? {
+        endpoint: byId("creativeApiEndpoint").value.trim() || defaultCreativeApiEndpoint,
+        size: byId("creativeImageSize").value || "1024x1024",
+        quality: byId("creativeImageQuality").value || "medium",
+        aplusModule: byId("creativeAplusModuleSelect").value || "hero"
+      }
+    : readCreativeApiSettings();
+}
+
+function currentAccountSnapshot(updatedAt = readAccountUpdatedAt() || new Date().toISOString()) {
+  return {
+    version: 2,
+    updatedAt,
+    skus: state.skus,
+    bulkCampaigns,
+    bulkSettings: currentBulkSettingsSnapshot(),
+    prompts: promptLibrary,
+    tasks,
+    creativeApiSettings: currentCreativeApiSettingsSnapshot()
+  };
+}
+
+function applyAccountSnapshot(snapshot) {
+  if (!currentAccountPhone || !snapshot || typeof snapshot !== "object") return false;
+  if (Array.isArray(snapshot.skus)) writeJsonStorage(accountStorageKey("skus"), snapshot.skus);
+  if (Array.isArray(snapshot.bulkCampaigns)) writeJsonStorage(accountStorageKey("bulkCampaigns"), snapshot.bulkCampaigns);
+  if (snapshot.bulkSettings && typeof snapshot.bulkSettings === "object") {
+    writeJsonStorage(accountStorageKey("bulkSettings"), snapshot.bulkSettings);
+  }
+  if (Array.isArray(snapshot.prompts)) writeJsonStorage(accountStorageKey("prompts"), snapshot.prompts);
+  if (Array.isArray(snapshot.tasks)) writeJsonStorage(accountStorageKey("tasks"), snapshot.tasks);
+  if (snapshot.creativeApiSettings && typeof snapshot.creativeApiSettings === "object") {
+    writeJsonStorage(accountStorageKey("creativeApiSettings"), snapshot.creativeApiSettings);
+  }
+  writeAccountUpdatedAt(snapshot.updatedAt || new Date().toISOString());
+  return true;
+}
+
+async function cloudAccountRequest(body) {
+  const response = await fetch(defaultCloudSyncEndpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(payload.error || `云端同步失败：${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return payload;
+}
+
+async function loginCloudAccount(phone, passwordHashValue, hasLocalAccount) {
+  if (!cloudSyncEnabled) return { ok: false, mode: "local" };
+  try {
+    setCloudSyncStatus("正在同步", "syncing");
+    const payload = await cloudAccountRequest({
+      action: "login",
+      phone,
+      passwordHash: passwordHashValue,
+      hasLocalAccount,
+      data: readStoredAccountSnapshot()
+    });
+    cloudSyncEnabled = true;
+    if (payload.data) applyAccountSnapshot(payload.data);
+    setCloudSyncStatus(payload.created ? "云端已创建" : "云端已同步", "synced");
+    return { ok: true, ...payload };
+  } catch (error) {
+    if (error.status === 401) throw error;
+    cloudSyncEnabled = false;
+    setCloudSyncStatus("本地模式", "local");
+    return { ok: false, error };
+  }
+}
+
+async function pushCloudAccountNow() {
+  if (!currentAccountPhone || !currentAccountPasswordHash || !cloudSyncEnabled) return;
+  if (cloudSyncInFlight) {
+    cloudSyncQueued = true;
+    return;
+  }
+  cloudSyncInFlight = true;
+  setCloudSyncStatus("正在同步", "syncing");
+  try {
+    const updatedAt = writeAccountUpdatedAt();
+    const payload = await cloudAccountRequest({
+      action: "save",
+      phone: currentAccountPhone,
+      passwordHash: currentAccountPasswordHash,
+      data: currentAccountSnapshot(updatedAt)
+    });
+    if (payload.data?.updatedAt) writeAccountUpdatedAt(payload.data.updatedAt);
+    setCloudSyncStatus("云端已同步", "synced");
+  } catch (error) {
+    cloudSyncEnabled = false;
+    setCloudSyncStatus(error.status === 401 ? "密码错误" : "本地模式", error.status === 401 ? "error" : "local");
+  } finally {
+    cloudSyncInFlight = false;
+    if (cloudSyncQueued) {
+      cloudSyncQueued = false;
+      window.setTimeout(pushCloudAccountNow, 300);
+    }
+  }
+}
+
+function scheduleCloudSync() {
+  if (!currentAccountPhone) return;
+  window.clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = window.setTimeout(pushCloudAccountNow, 900);
+}
+
+function markAccountDataChanged() {
+  if (!currentAccountPhone) return;
+  writeAccountUpdatedAt();
+  scheduleCloudSync();
 }
 
 function filteredSkus() {
@@ -980,6 +1144,7 @@ function readAccountSkus() {
 function saveAccountSkus() {
   if (!currentAccountPhone) return;
   writeJsonStorage(accountStorageKey("skus"), state.skus);
+  markAccountDataChanged();
 }
 
 function readBulkCampaigns() {
@@ -990,6 +1155,7 @@ function readBulkCampaigns() {
 function saveBulkCampaigns() {
   if (!currentAccountPhone) return;
   writeJsonStorage(accountStorageKey("bulkCampaigns"), bulkCampaigns);
+  markAccountDataChanged();
 }
 
 function readBulkSettings() {
@@ -1008,6 +1174,7 @@ function applyBulkSettings() {
 function saveBulkSettings() {
   if (!currentAccountPhone) return;
   writeJsonStorage(accountStorageKey("bulkSettings"), getBulkSettings());
+  markAccountDataChanged();
 }
 
 function readCampaignNumber(campaign, field, fallback) {
@@ -1925,6 +2092,7 @@ let promptLibrary = readPromptLibrary();
 function savePromptLibrary() {
   if (!currentAccountPhone) return;
   localStorage.setItem(accountStorageKey("prompts"), JSON.stringify(promptLibrary));
+  markAccountDataChanged();
 }
 
 function setPromptStatus(text) {
@@ -2458,6 +2626,7 @@ function saveCreativeApiSettings() {
     quality: byId("creativeImageQuality")?.value || "medium",
     aplusModule: byId("creativeAplusModuleSelect")?.value || "hero"
   });
+  markAccountDataChanged();
 }
 
 function setCreativeGenerationStatus(text) {
@@ -2621,6 +2790,7 @@ let tasks = readTasks();
 function saveTasks() {
   if (!currentAccountPhone) return;
   localStorage.setItem(accountStorageKey("tasks"), JSON.stringify(tasks));
+  markAccountDataChanged();
 }
 
 function renderTasks() {
@@ -2797,7 +2967,7 @@ function loadAccountData() {
   renderAll();
 }
 
-function registerOrLogin(phone, password) {
+async function registerOrLogin(phone, password) {
   const accounts = readAccounts();
   const firstAccount = Object.keys(accounts).length === 0;
   const existing = accounts[phone];
@@ -2807,6 +2977,9 @@ function registerOrLogin(phone, password) {
     byId("passwordInput").select();
     return false;
   }
+  currentAccountPhone = phone;
+  currentAccountPasswordHash = hash;
+  const cloudLogin = await loginCloudAccount(phone, hash, Boolean(existing));
   accounts[phone] = {
     ...existing,
     phone,
@@ -2815,16 +2988,22 @@ function registerOrLogin(phone, password) {
     lastLoginAt: new Date().toISOString()
   };
   saveAccounts(accounts);
-  currentAccountPhone = phone;
   localStorage.setItem(currentAccountKey, phone);
   if (firstAccount && !existing) migrateLegacyDataForFirstAccount();
   loadAccountData();
+  if (!cloudLogin.ok) {
+    setAuthStatus("云端同步暂不可用，已使用本机数据登录。");
+  } else {
+    setAuthStatus("");
+  }
   byId("passwordInput").value = "";
   return true;
 }
 
 function logoutAccount() {
   currentAccountPhone = "";
+  currentAccountPasswordHash = "";
+  cloudSyncEnabled = true;
   bulkCampaigns = defaultBulkCampaigns();
   promptLibrary = [];
   tasks = defaultTasks();
@@ -2838,11 +3017,13 @@ function logoutAccount() {
 function bootstrapAuth() {
   if (currentAccountPhone && isValidPhone(currentAccountPhone)) byId("phoneInput").value = currentAccountPhone;
   currentAccountPhone = "";
+  currentAccountPasswordHash = "";
   renderAccountState();
+  setCloudSyncStatus("本地", "local");
   refreshExchangeRate();
 }
 
-function handleAuthSubmit(event) {
+async function handleAuthSubmit(event) {
   event?.preventDefault();
   const phone = normalizePhone(byId("phoneInput").value);
   const password = byId("passwordInput").value;
@@ -2856,7 +3037,19 @@ function handleAuthSubmit(event) {
     return false;
   }
   setAuthStatus("");
-  registerOrLogin(phone, password);
+  try {
+    await registerOrLogin(phone, password);
+  } catch (error) {
+    if (error.status === 401) {
+      currentAccountPhone = "";
+      currentAccountPasswordHash = "";
+      setAuthStatus("密码不正确，请重新输入。");
+      byId("passwordInput").select();
+      renderAccountState();
+    } else {
+      setAuthStatus("登录失败，请稍后重试。");
+    }
+  }
   return false;
 }
 
