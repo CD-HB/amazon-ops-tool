@@ -519,27 +519,39 @@ function numberValue(id) {
 const profitMarketplaceConfigs = {
   US: {
     label: "美国站",
+    fbaLabel: "美国站 2026 非高峰期",
     exchangeLabel: "美元兑人民币汇率",
     currency: "USD",
     symbol: "$",
     locale: "en-US",
-    defaultRate: 7.2
+    defaultRate: 7.2,
+    vatRate: 0,
+    fbaRegion: "US",
+    surchargeEligible: true
   },
   CA: {
     label: "加拿大站",
+    fbaLabel: "加拿大站 2026 非高峰期",
     exchangeLabel: "加元兑人民币汇率",
     currency: "CAD",
     symbol: "CA$",
     locale: "en-CA",
-    defaultRate: 5.3
+    defaultRate: 5.3,
+    vatRate: 0,
+    fbaRegion: "CA",
+    surchargeEligible: true
   },
   UK: {
     label: "英国站",
+    fbaLabel: "英国站 2026 标准FBA",
     exchangeLabel: "英镑兑人民币汇率",
     currency: "GBP",
     symbol: "£",
     locale: "en-GB",
-    defaultRate: 9.2
+    defaultRate: 9.2,
+    vatRate: 20,
+    fbaRegion: "UK",
+    surchargeEligible: false
   }
 };
 
@@ -556,12 +568,13 @@ function getProfitMarketplaceConfig() {
 }
 
 function formatProfitMoney(value, config = getProfitMarketplaceConfig()) {
-  return new Intl.NumberFormat(config.locale, {
+  const formatted = new Intl.NumberFormat(config.locale, {
     style: "currency",
     currency: config.currency,
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(value);
+  return config.currency === "CAD" ? formatted.replace("$", "CA$") : formatted;
 }
 
 function updateProfitCurrencyLabels() {
@@ -578,6 +591,24 @@ function updateProfitCurrencyLabels() {
   });
   const exchangeLabel = byId("exchangeRateLabel");
   if (exchangeLabel) exchangeLabel.textContent = config.exchangeLabel;
+  const vatField = byId("vatRateField");
+  if (vatField) vatField.hidden = config.fbaRegion !== "UK";
+  const vatInput = byId("vatRate");
+  if (vatInput && config.fbaRegion === "UK" && !vatInput.value) vatInput.value = String(config.vatRate);
+  const fbaMarketplaceLabel = byId("fbaMarketplaceLabel");
+  if (fbaMarketplaceLabel) fbaMarketplaceLabel.textContent = config.fbaLabel;
+  const fbaSurchargeInput = byId("fbaIncludeSurcharge");
+  if (fbaSurchargeInput) {
+    if (!config.surchargeEligible) {
+      fbaSurchargeInput.dataset.lastEligibleChecked = String(fbaSurchargeInput.checked);
+      fbaSurchargeInput.checked = false;
+      fbaSurchargeInput.disabled = true;
+    } else {
+      fbaSurchargeInput.disabled = false;
+      if (fbaSurchargeInput.dataset.lastEligibleChecked === "true") fbaSurchargeInput.checked = true;
+      delete fbaSurchargeInput.dataset.lastEligibleChecked;
+    }
+  }
 }
 
 async function refreshExchangeRate() {
@@ -772,47 +803,263 @@ function fbaBulkyFee(tier, shippingWeightLb, price) {
   return base + extraWeight * 0.38;
 }
 
-function calculateFbaFee() {
-  const category = byId("fbaCategory").value;
-  const price = numberValue("salePrice");
+function fbaSortedDimensionsCm() {
+  return [numberValue("fbaLength"), numberValue("fbaWidth"), numberValue("fbaHeight")]
+    .sort((a, b) => a - b);
+}
+
+function fbaPackageInfo() {
+  const dimensionsCm = fbaSortedDimensionsCm();
+  const [shortestCm, middleCm, longestCm] = dimensionsCm;
+  const weightKg = Math.max(0.01, numberValue("fbaWeight"));
+  return {
+    dimensionsCm,
+    shortestCm,
+    middleCm,
+    longestCm,
+    weightKg,
+    volumeCm3: dimensionsCm.reduce((total, value) => total * Math.max(0.01, value), 1)
+  };
+}
+
+function findWeightBand(bands, weight) {
+  return bands.find((band) => weight <= band[0]) || bands[bands.length - 1];
+}
+
+function roundUpStep(value, step) {
+  return Math.ceil(value / step) * step;
+}
+
+function calculateUsFbaFee(category, price) {
   const unitWeightLb = numberValue("fbaWeight") * lbPerKg;
   const tierInfo = fbaSizeTier(fbaSortedDimensions(), unitWeightLb);
   const baseFee =
     tierInfo.tier === "smallStandard" || tierInfo.tier === "largeStandard"
       ? fbaStandardFee(category, tierInfo.tier, tierInfo.shippingWeight, price)
       : fbaBulkyFee(tierInfo.tier, tierInfo.shippingWeight, price);
-  const surcharge = byId("fbaIncludeSurcharge").checked ? baseFee * fbaSurchargeRate : 0;
   return {
     ...tierInfo,
+    tierLabel: fbaTierLabels[tierInfo.tier] || tierInfo.tier,
+    shippingWeightLabel: `${fbaRoundUp(tierInfo.shippingWeight, 0.01).toFixed(2)} lb / ${fbaRoundUp(tierInfo.shippingWeight / lbPerKg, 0.01).toFixed(2)} kg`,
     baseFee,
+    note: tierInfo.tier === "overLimit"
+      ? "该尺寸/重量可能超出美国站常规 FBA 配送费层级，请用 Seller Central 费用预览复核。"
+      : tierInfo.estimated
+        ? "美国站大件费用按公开费率区间估算；最终费用建议以上传前 Seller Central 费用预览为准。"
+        : "输入单位为 cm / kg，系统已换算为 inch / lb 后按美国站 2026 FBA 配送费率估算。"
+  };
+}
+
+function calculateCanadaFbaFee(category, price, pack) {
+  const envelopeBands = [
+    [0.1, 4.45],
+    [0.2, 4.75],
+    [0.3, 5.00],
+    [0.4, 5.24],
+    [0.5, 5.45]
+  ];
+  const standardBands = [
+    [0.1, 5.82],
+    [0.2, 5.92],
+    [0.3, 6.12],
+    [0.4, 6.34],
+    [0.5, 6.67],
+    [0.6, 7.16],
+    [0.7, 7.46],
+    [0.8, 7.69],
+    [0.9, 7.96],
+    [1.0, 8.25],
+    [1.1, 8.48],
+    [1.2, 8.58],
+    [1.3, 8.84],
+    [1.4, 9.04],
+    [1.5, 9.29]
+  ];
+  const shippingWeightKg = Math.max(pack.weightKg, pack.volumeCm3 / 5000);
+  const isEnvelope = pack.longestCm <= 38 && pack.middleCm <= 27 && pack.shortestCm <= 2 && pack.weightKg <= 0.5;
+  const isStandard = pack.longestCm <= 45 && pack.middleCm <= 35 && pack.shortestCm <= 20 && pack.weightKg <= 9;
+  let tier = "caSpecialOversize";
+  let tierLabel = "特殊大件（估算）";
+  let baseFee = 153.57 + Math.max(0, Math.ceil((shippingWeightKg - 0.5) / 0.5)) * 0.95;
+
+  if (isEnvelope) {
+    tier = "caEnvelope";
+    tierLabel = "加拿大信封";
+    baseFee = findWeightBand(envelopeBands, pack.weightKg)[1];
+  } else if (isStandard) {
+    tier = "caStandard";
+    tierLabel = "加拿大标准尺寸";
+    if (shippingWeightKg <= 1.5) {
+      baseFee = findWeightBand(standardBands, shippingWeightKg)[1];
+    } else {
+      baseFee = 10.28 + Math.max(0, Math.ceil((shippingWeightKg - 1.5) / 0.1)) * 0.09;
+    }
+  } else if (pack.longestCm <= 60 && pack.middleCm <= 45 && pack.shortestCm <= 30 && shippingWeightKg <= 9) {
+    tier = "caSmallOversize";
+    tierLabel = "加拿大小号大件（估算）";
+    baseFee = 15.43 + Math.max(0, Math.ceil((shippingWeightKg - 0.5) / 0.5)) * 0.46;
+  } else if (pack.longestCm <= 108 && shippingWeightKg <= 23) {
+    tier = "caMediumOversize";
+    tierLabel = "加拿大中号大件（估算）";
+    baseFee = 37.78 + Math.max(0, Math.ceil((shippingWeightKg - 0.5) / 0.5)) * 0.52;
+  } else if (pack.longestCm <= 274 && shippingWeightKg <= 68) {
+    tier = "caLargeOversize";
+    tierLabel = "加拿大大号大件（估算）";
+    baseFee = 95.75 + Math.max(0, Math.ceil((shippingWeightKg - 0.5) / 0.5)) * 0.60;
+  }
+
+  if (category === "dangerous") baseFee += 0.11;
+  if (price > 0 && price < 14 && (tier === "caEnvelope" || tier === "caStandard")) {
+    baseFee = Math.max(0, baseFee - 0.80);
+  }
+
+  return {
+    tier,
+    tierLabel,
+    shippingWeight: shippingWeightKg,
+    shippingWeightLabel: `${roundUpStep(shippingWeightKg, 0.01).toFixed(2)} kg`,
+    baseFee,
+    estimated: !isEnvelope && !isStandard,
+    note: "加拿大站按 Amazon.ca 当前公开 FBA 费率估算；低价商品已按售价低于 CA$14 扣减 CA$0.80，最终费用请以上传前 Seller Central 预览为准。"
+  };
+}
+
+function calculateUkFbaFee(category, pack) {
+  const dimensionalKg = pack.volumeCm3 / 5000;
+  const shippingWeightKg = Math.max(pack.weightKg, dimensionalKg);
+  const bands = {
+    lightEnvelope: [
+      [0.02, 1.83],
+      [0.04, 1.87],
+      [0.06, 1.89],
+      [0.08, 2.07],
+      [0.1, 2.08]
+    ],
+    standardEnvelope: [
+      [0.21, 2.10],
+      [0.46, 2.16]
+    ],
+    largeEnvelope: [[0.96, 2.72]],
+    extraLargeEnvelope: [[0.96, 2.94]],
+    smallParcel: [
+      [0.15, 2.91],
+      [0.4, 3.00],
+      [0.9, 3.04],
+      [1.4, 3.05],
+      [1.9, 3.25],
+      [3.9, 3.27]
+    ],
+    standardParcel: [
+      [0.15, 2.94],
+      [0.4, 3.01],
+      [0.9, 3.06],
+      [1.4, 3.26],
+      [1.9, 3.48],
+      [2.9, 3.49],
+      [3.9, 3.54],
+      [5.9, 3.56],
+      [8.9, 3.57],
+      [11.9, 3.58]
+    ]
+  };
+  const lengthPlusGirth = pack.longestCm + 2 * (pack.middleCm + pack.shortestCm);
+  let tier = "ukHeavyOversize";
+  let tierLabel = "英国重型大件（估算）";
+  let baseFee = 13.04 + Math.max(0, Math.ceil(shippingWeightKg - 1)) * 0.09;
+  let estimated = false;
+
+  if (pack.longestCm <= 33 && pack.middleCm <= 23 && pack.shortestCm <= 2.5 && pack.weightKg <= 0.1) {
+    tier = "ukLightEnvelope";
+    tierLabel = "英国轻小信封";
+    baseFee = findWeightBand(bands.lightEnvelope, pack.weightKg)[1];
+  } else if (pack.longestCm <= 33 && pack.middleCm <= 23 && pack.shortestCm <= 2.5 && pack.weightKg <= 0.46) {
+    tier = "ukStandardEnvelope";
+    tierLabel = "英国标准信封";
+    baseFee = findWeightBand(bands.standardEnvelope, pack.weightKg)[1];
+  } else if (pack.longestCm <= 33 && pack.middleCm <= 23 && pack.shortestCm <= 4 && pack.weightKg <= 0.96) {
+    tier = "ukLargeEnvelope";
+    tierLabel = "英国大号信封";
+    baseFee = findWeightBand(bands.largeEnvelope, pack.weightKg)[1];
+  } else if (pack.longestCm <= 33 && pack.middleCm <= 23 && pack.shortestCm <= 6 && pack.weightKg <= 0.96) {
+    tier = "ukExtraLargeEnvelope";
+    tierLabel = "英国超大号信封";
+    baseFee = findWeightBand(bands.extraLargeEnvelope, pack.weightKg)[1];
+  } else if (pack.longestCm <= 35 && pack.middleCm <= 25 && pack.shortestCm <= 12 && shippingWeightKg <= 3.9) {
+    tier = "ukSmallParcel";
+    tierLabel = "英国小包裹";
+    baseFee = findWeightBand(bands.smallParcel, shippingWeightKg)[1];
+  } else if (pack.longestCm <= 45 && pack.middleCm <= 34 && pack.shortestCm <= 26 && shippingWeightKg <= 11.9) {
+    tier = "ukStandardParcel";
+    tierLabel = "英国标准包裹";
+    baseFee = findWeightBand(bands.standardParcel, shippingWeightKg)[1];
+  } else {
+    estimated = true;
+    if (pack.longestCm <= 61 && pack.middleCm <= 46 && pack.shortestCm <= 46 && shippingWeightKg <= 23) {
+      tier = "ukSmallOversize";
+      tierLabel = "英国小号大件（估算）";
+      baseFee = 3.49 + Math.max(0, Math.ceil(shippingWeightKg - 0.76)) * 0.25;
+    } else if (pack.longestCm <= 120 && pack.middleCm <= 60 && pack.shortestCm <= 60 && shippingWeightKg <= 23) {
+      tier = "ukStandardOversize";
+      tierLabel = "英国标准大件（估算）";
+      baseFee = 5.67 + Math.max(0, Math.ceil(shippingWeightKg - 1)) * 0.07;
+    } else if (pack.longestCm <= 175 && lengthPlusGirth <= 360 && shippingWeightKg <= 31.5) {
+      tier = "ukBulkyOversize";
+      tierLabel = "英国大件（估算）";
+      baseFee = 10.20 + Math.max(0, Math.ceil(shippingWeightKg - 1)) * 0.24;
+    }
+  }
+
+  if (category === "dangerous") baseFee += 0.10;
+
+  return {
+    tier,
+    tierLabel,
+    shippingWeight: shippingWeightKg,
+    shippingWeightLabel: `${roundUpStep(shippingWeightKg, 0.01).toFixed(2)} kg`,
+    baseFee,
+    estimated,
+    note: "英国站按 Amazon Europe 2026 UK 标准FBA费率估算；大件和危险品附加仅做运营测算，最终费用请以上传前 Seller Central 预览为准。"
+  };
+}
+
+function calculateFbaFee() {
+  const category = byId("fbaCategory").value;
+  const price = numberValue("salePrice");
+  const config = getProfitMarketplaceConfig();
+  const pack = fbaPackageInfo();
+  let result;
+  if (config.fbaRegion === "CA") {
+    result = calculateCanadaFbaFee(category, price, pack);
+  } else if (config.fbaRegion === "UK") {
+    result = calculateUkFbaFee(category, pack);
+  } else {
+    result = calculateUsFbaFee(category, price);
+  }
+  const surcharge = config.surchargeEligible && byId("fbaIncludeSurcharge").checked ? result.baseFee * fbaSurchargeRate : 0;
+  return {
+    ...result,
     surcharge,
-    finalFee: baseFee + surcharge
+    finalFee: result.baseFee + surcharge
   };
 }
 
 function updateFbaCalculator() {
   const result = calculateFbaFee();
   const profitConfig = getProfitMarketplaceConfig();
-  const canSyncToProfit = profitConfig.currency === "USD";
   const fbaAutoSync = byId("fbaAutoSync");
-  if (fbaAutoSync) fbaAutoSync.disabled = !canSyncToProfit;
-  byId("fbaSizeTier").textContent = fbaTierLabels[result.tier] || result.tier;
-  byId("fbaShipWeight").textContent = `${fbaRoundUp(result.shippingWeight, 0.01).toFixed(2)} lb / ${fbaRoundUp(result.shippingWeight / lbPerKg, 0.01).toFixed(2)} kg`;
-  byId("fbaBaseFee").textContent = money.format(result.baseFee);
-  byId("fbaSurcharge").textContent = money.format(result.surcharge);
-  byId("fbaFinalFee").textContent = money.format(result.finalFee);
-  const policyNote =
-    result.tier === "overLimit"
-      ? "该尺寸/重量可能超出常规 FBA 配送费层级，请用 Seller Central 费用预览复核。"
-      : result.estimated
-        ? "输入单位为 cm / kg，系统已换算为 inch / lb 后按 2026 公开费率区间估算；最终费用建议以上传前 Seller Central 费用预览为准。"
-        : "输入单位为 cm / kg，系统已换算为 inch / lb 后按美国站 2026 FBA 配送费率估算，并可选择叠加 3.5% 附加费。";
-  const marketplaceNote = canSyncToProfit
-    ? ""
-    : `当前利润计算选择${profitConfig.label}，详细 FBA 费率仍按美国站展示；请在利润计算器里手动填写${profitConfig.symbol} FBA 费用。`;
-  byId("fbaPolicyNote").textContent = [policyNote, marketplaceNote].filter(Boolean).join(" ");
+  const surchargeInput = byId("fbaIncludeSurcharge");
+  if (surchargeInput) surchargeInput.disabled = !profitConfig.surchargeEligible;
+  byId("fbaSizeTier").textContent = result.tierLabel || fbaTierLabels[result.tier] || result.tier;
+  byId("fbaShipWeight").textContent = result.shippingWeightLabel;
+  byId("fbaBaseFee").textContent = formatProfitMoney(result.baseFee, profitConfig);
+  byId("fbaSurcharge").textContent = formatProfitMoney(result.surcharge, profitConfig);
+  byId("fbaFinalFee").textContent = formatProfitMoney(result.finalFee, profitConfig);
+  const surchargeNote = profitConfig.surchargeEligible
+    ? "可选择叠加 3.5% 燃油/物流附加费。"
+    : "英国站不使用美国/加拿大 3.5% 燃油/物流附加费。";
+  byId("fbaPolicyNote").textContent = [result.note, surchargeNote].filter(Boolean).join(" ");
 
-  if (canSyncToProfit && fbaAutoSync?.checked && Number.isFinite(result.finalFee)) {
+  if (fbaAutoSync?.checked && Number.isFinite(result.finalFee)) {
     byId("fbaFee").value = result.finalFee.toFixed(2);
   }
 }
@@ -822,6 +1069,9 @@ function updateProfit() {
   const config = getProfitMarketplaceConfig();
   const price = numberValue("salePrice");
   const cnyRate = Math.max(0.01, numberValue("usdCnyRate") || config.defaultRate);
+  const vatRate = config.fbaRegion === "UK" ? Math.max(0, numberValue("vatRate") || config.vatRate) / 100 : 0;
+  const netSales = vatRate > 0 ? price / (1 + vatRate) : price;
+  const vatAmount = Math.max(0, price - netSales);
   const unitCostCny = numberValue("unitCost");
   const unitCost = unitCostCny / cnyRate;
   const referralRate = numberValue("referralRate") / 100;
@@ -831,13 +1081,14 @@ function updateProfit() {
   const shipping = shippingCny / cnyRate;
   const refundRate = numberValue("refundRate") / 100;
   const targetMargin = numberValue("targetMargin") / 100;
-  const refundReserve = price * refundRate * 0.18;
-  const referral = price * referralRate;
-  const profit = price - unitCost - referral - fba - ad - shipping - refundReserve;
+  const refundReserveRate = refundRate * 0.18;
+  const refundReserve = netSales * refundReserveRate;
+  const referral = netSales * referralRate;
+  const profit = netSales - unitCost - referral - fba - ad - shipping - refundReserve;
   const profitCny = profit * cnyRate;
   const margin = price ? profit / price : 0;
-  const breakEven = price ? (price - unitCost - referral - fba - shipping - refundReserve) / price : 0;
-  const denominator = 1 - referralRate - refundRate * 0.18 - targetMargin;
+  const breakEven = price ? (netSales - unitCost - referral - fba - shipping - refundReserve) / price : 0;
+  const denominator = (1 / (1 + vatRate)) * (1 - referralRate - refundReserveRate) - targetMargin;
   const minPrice = denominator > 0 ? (unitCost + fba + ad + shipping) / denominator : 0;
 
   byId("profitValue").textContent = formatProfitMoney(profit, config);
@@ -845,6 +1096,27 @@ function updateProfit() {
   byId("profitMargin").textContent = percent.format(margin);
   byId("breakEvenAcos").textContent = percent.format(Math.max(0, breakEven));
   byId("minPrice").textContent = formatProfitMoney(Math.max(0, minPrice), config);
+  const breakdown = byId("profitBreakdown");
+  if (breakdown) {
+    const rows = [
+      ["站点", config.label],
+      ["销售价格", formatProfitMoney(price, config)],
+      ["VAT 扣除", vatRate > 0 ? `${formatProfitMoney(vatAmount, config)}（${percent.format(vatRate)}，含税价倒扣）` : "无"],
+      ["净销售额", formatProfitMoney(netSales, config)],
+      ["采购成本", `${cnyMoney.format(unitCostCny)} ÷ ${cnyRate.toFixed(4)} = ${formatProfitMoney(unitCost, config)}`],
+      ["头程/包装", `${cnyMoney.format(shippingCny)} ÷ ${cnyRate.toFixed(4)} = ${formatProfitMoney(shipping, config)}`],
+      ["佣金", `${formatProfitMoney(netSales, config)} × ${percent.format(referralRate)} = ${formatProfitMoney(referral, config)}`],
+      ["FBA 费用", formatProfitMoney(fba, config)],
+      ["广告费", formatProfitMoney(ad, config)],
+      ["退款预留", `${formatProfitMoney(netSales, config)} × ${percent.format(refundRate)} × 18% = ${formatProfitMoney(refundReserve, config)}`],
+      ["单件利润", `${formatProfitMoney(profit, config)} / ${cnyMoney.format(profitCny)}`],
+      ["利润率", `${formatProfitMoney(profit, config)} ÷ ${formatProfitMoney(price || 1, config)} = ${percent.format(margin)}`],
+      ["建议底价", denominator > 0 ? formatProfitMoney(Math.max(0, minPrice), config) : "目标毛利过高，无法计算"]
+    ];
+    breakdown.innerHTML = rows
+      .map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`)
+      .join("");
+  }
 }
 
 function updateInventory() {

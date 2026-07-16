@@ -746,6 +746,48 @@ label textarea {
   line-height: 1.5;
 }
 
+.profit-breakdown {
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #ffffff;
+}
+
+.profit-breakdown summary {
+  cursor: pointer;
+  padding: 12px 14px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.profit-breakdown > div {
+  display: grid;
+  gap: 1px;
+  border-top: 1px solid var(--line);
+  background: var(--line);
+}
+
+.profit-breakdown > div div {
+  display: grid;
+  grid-template-columns: minmax(92px, 0.32fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 14px;
+  background: #fbfcfd;
+}
+
+.profit-breakdown span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.profit-breakdown strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .result-strip {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
