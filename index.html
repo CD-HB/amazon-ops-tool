@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SellerOps | 亚马逊运营工具台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%23121a21'/%3E%3Cpath fill='white' d='M12 35 22 10h4l10 25h-6l-2-5H20l-2 5h-6Zm10-10h4l-2-7-2 7Z'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="styles.css?v=20260706-hidden-fix" />
+    <link rel="stylesheet" href="styles.css?v=20260910-sp-only" />
   </head>
   <body>
     <div class="auth-screen" id="authScreen" hidden>
@@ -61,6 +61,10 @@
             <i data-lucide="sheet" aria-hidden="true"></i>
             <span>批量广告</span>
           </button>
+          <button class="nav-item" data-target="negativeKeywords" title="否定词筛选">
+            <i data-lucide="filter" aria-hidden="true"></i>
+            <span>否定词筛选</span>
+          </button>
           <button class="nav-item" data-target="promptLibrary" title="提示词库">
             <i data-lucide="library" aria-hidden="true"></i>
             <span>提示词</span>
@@ -71,13 +75,6 @@
           </button>
         </nav>
 
-        <div class="sidebar-metric">
-          <span>健康分</span>
-          <strong id="healthScore">86</strong>
-          <div class="mini-track">
-            <span id="healthBar"></span>
-          </div>
-        </div>
       </aside>
 
       <main class="workspace">
@@ -202,6 +199,15 @@
                     <input id="salePrice" type="number" min="0" step="0.01" value="29.90" />
                   </label>
                   <label>
+                    配送方式
+                    <select id="fulfillmentMethod"><option value="FBA">FBA 亚马逊配送</option><option value="FBM">FBM 自配送</option></select>
+                  </label>
+                  <label id="buyerShippingField" hidden>
+                    买家支付的运费（<span id="buyerShippingCurrencyLabel">$</span>）
+                    <input id="buyerShipping" type="number" min="0" step="0.01" value="0" />
+                    <span class="input-hint">额外计入收入及佣金基数，包邮填 0。</span>
+                  </label>
+                  <label>
                     采购成本（¥）
                     <input id="unitCost" type="number" min="0" step="0.01" value="60" />
                   </label>
@@ -209,13 +215,19 @@
                     佣金 %
                     <input id="referralRate" type="number" min="0" max="60" step="0.1" value="15" />
                   </label>
-                  <label>
+                  <label id="fbaFeeField">
                     FBA 费用（<span id="fbaFeeCurrencyLabel">$</span>）
                     <input id="fbaFee" type="number" min="0" step="0.01" value="5.65" />
                   </label>
                   <label>
-                    单均广告费（<span id="adCostCurrencyLabel">$</span>）
-                    <input id="adCost" type="number" min="0" step="0.01" value="3.20" />
+                    ACOAS（广告占比 %）
+                    <input id="acoas" type="number" min="0" step="0.1" value="10.7" />
+                    <span class="input-hint" id="adCostHint">广告费 = 商品售价 × ACOAS，不含买家运费。</span>
+                  </label>
+                  <label id="fbmShippingCostField" hidden>
+                    FBM 发货成本（¥）
+                    <input id="fbmShippingCost" type="number" min="0" step="0.01" value="0" />
+                    <span class="input-hint">支付给物流商的费用，与买家运费分开计算。</span>
                   </label>
                   <label>
                     头程/包装（¥）
@@ -253,7 +265,7 @@
                     <strong id="profitMargin">0%</strong>
                   </div>
                   <div>
-                    <span>盈亏 ACOS</span>
+                    <span>盈亏 ACOAS</span>
                     <strong id="breakEvenAcos">0%</strong>
                   </div>
                   <div>
@@ -299,7 +311,7 @@
                   </label>
                   <label class="checkbox-field wide-field">
                     <input id="fbaIncludeSurcharge" type="checkbox" checked />
-                    <span>包含 2026-04-17 起 3.5% 燃油/物流附加费</span>
+                    <span id="fbaSurchargeLabel">包含 2026-04-17 起 3.5% 燃油/物流附加费</span>
                   </label>
                   <label class="checkbox-field wide-field">
                     <input id="fbaAutoSync" type="checkbox" checked />
@@ -329,6 +341,7 @@
                   </div>
                 </div>
                 <p class="fba-policy-note" id="fbaPolicyNote"></p>
+                <p class="fba-policy-note" id="fbaRateSource"></p>
               </div>
             </div>
           </article>
@@ -512,6 +525,42 @@
           </div>
         </section>
 
+        <section class="panel keyword-panel" id="negativeKeywords">
+          <div class="panel-heading">
+            <div><p class="eyebrow">关键词处理</p><h2>否定关键词筛选</h2></div>
+          </div>
+          <p class="input-hint">填写产品名称及同义词，粘贴关键词，只筛出未命中任何相关词根的待否定候选。无需填写标题和五点。</p>
+          <form id="negativeKeywordForm" class="keyword-layout">
+            <label>原始关键词（每行一个）
+              <textarea id="negativeKeywordInput" rows="12" placeholder="travel backpack&#10;hiking rucksack&#10;small daypack&#10;travel suitcase&#10;water bottle"></textarea>
+            </label>
+            <div class="keyword-rules">
+              <label>产品相关词根（产品名称及同义词，每行一个或逗号分隔）
+                <textarea id="negativeKeywordRoots" rows="5" placeholder="backpack&#10;backpacks&#10;rucksack&#10;daypack"></textarea>
+              </label>
+              <label>词根匹配方式
+                <select id="negativeKeywordMode">
+                  <option value="word">完整单词 / 短语</option>
+                  <option value="contains">字符包含</option>
+                </select>
+              </label>
+              <p class="input-hint">命中任意一个相关词根就保留。建议填写产品名称及同义词，不要单独填写 travel、black 等宽泛属性。完整单词模式下，请补充复数等变体；字符包含模式下，backpack 也匹配 backpacks。忽略大小写，自动去空行和去重。</p>
+              <button class="icon-text-button primary" type="submit">找出待否定候选</button>
+            </div>
+            <div class="keyword-result">
+              <label>待否定候选（未命中任何产品相关词根）
+                <textarea id="negativeKeywordOutput" rows="10" readonly placeholder="筛选结果将显示在这里"></textarea>
+              </label>
+              <p id="negativeKeywordStatus" class="input-hint" role="status" aria-live="polite">请粘贴关键词并填写产品相关词根。</p>
+              <div class="keyword-actions">
+                <button id="copyNegativeKeywords" class="icon-text-button" type="button" disabled>复制结果</button>
+                <button id="downloadNegativeKeywords" class="icon-text-button" type="button" disabled>下载 TXT</button>
+              </div>
+              <p class="input-hint">请检查候选后再用于广告否定。此功能按词根过滤，含有产品词根但仍不相关的词不会被筛出；遗漏同义词也可能误筛。下载结果为文本清单。</p>
+            </div>
+          </form>
+        </section>
+
         <section class="tool-grid">
           <article class="panel tool-panel prompt-library-panel" id="promptLibrary">
             <div class="panel-heading">
@@ -621,7 +670,7 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260716-profit-fba-ca-uk"></script>
+    <script src="app.js?v=20260910-sp-only"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.refreshIcons && window.refreshIcons()"></script>
   </body>
 </html>
