@@ -169,6 +169,12 @@ const asinTargetOptions = [
   { value: "asin-expanded", label: "已扩展", expressionPrefix: "asin-expanded", factor: 0.86 }
 ];
 
+const campaignTypeOptions = [
+  { value: "keyword", label: "SP关键词投放", product: "Sponsored Products" },
+  { value: "asin", label: "SP商品投放", product: "Sponsored Products" },
+  { value: "auto", label: "SP自动投放", product: "Sponsored Products" }
+];
+
 const bulkColumns = [
   "Product",
   "Entity",
@@ -199,7 +205,16 @@ const bulkColumns = [
   "Audience Id",
   "Shopper Cohort Percentage",
   "Shopper Cohort Type",
-  "Sites"
+  "Sites",
+  "Campaign Type",
+  "Ad Format",
+  "Media ID",
+  "Creative ASINs",
+  "Brand Entity ID",
+  "Creative Asset Id",
+  "Brand Name",
+  "Landing Page",
+  "Video Ad Format"
 ];
 
 const bulkPreviewLimit = 9;
@@ -223,6 +238,10 @@ function defaultBulkCampaigns() {
       keywords: "",
       keywordBids: "",
       targets: "",
+      creativeAssetId: "",
+      brandEntityId: "",
+      brandName: "",
+      landingPage: "",
       negativeMatchTypes: ["negative exact"],
       negativeExact: "",
       negativePhrase: "",
@@ -464,19 +483,12 @@ function updateKpis() {
   const acos = weightedAverage(items, "acos", "revenue");
   const cover = daily ? stock / daily : 0;
   const cvr = sessions ? units / sessions : 0;
-  const riskCount = items.filter((item) => item.status === "risk").length;
-  const health = Math.max(
-    0,
-    Math.min(100, Math.round(72 + margin * 50 - acos * 32 + Math.min(cover, 60) * 0.28 - riskCount * 5))
-  );
 
   byId("revenueKpi").textContent = currency.format(revenue);
   byId("marginKpi").textContent = percent.format(margin);
   byId("acosKpi").textContent = percent.format(acos);
   byId("coverKpi").textContent = `${Math.round(cover)} 天`;
   byId("cvrKpi").textContent = percent.format(cvr);
-  byId("healthScore").textContent = String(health);
-  byId("healthBar").style.width = `${health}%`;
   byId("revenueDelta").className = "positive";
   byId("revenueDelta").textContent = revenue > 100000 ? "+18.4%" : "+7.2%";
   byId("marginDelta").className = margin >= 0.28 ? "positive" : "warning";
@@ -551,7 +563,7 @@ const profitMarketplaceConfigs = {
     defaultRate: 9.2,
     vatRate: 20,
     fbaRegion: "UK",
-    surchargeEligible: false
+    surchargeEligible: true
   }
 };
 
@@ -568,6 +580,7 @@ function getProfitMarketplaceConfig() {
 }
 
 function formatProfitMoney(value, config = getProfitMarketplaceConfig()) {
+  if (!Number.isFinite(value)) return "待核实";
   const formatted = new Intl.NumberFormat(config.locale, {
     style: "currency",
     currency: config.currency,
@@ -582,7 +595,7 @@ function updateProfitCurrencyLabels() {
   [
     "salePriceCurrencyLabel",
     "fbaFeeCurrencyLabel",
-    "adCostCurrencyLabel",
+    "buyerShippingCurrencyLabel",
     "profitCurrencyLabel",
     "minPriceCurrencyLabel"
   ].forEach((id) => {
@@ -836,7 +849,7 @@ function calculateUsFbaFee(category, price) {
   const baseFee =
     tierInfo.tier === "smallStandard" || tierInfo.tier === "largeStandard"
       ? fbaStandardFee(category, tierInfo.tier, tierInfo.shippingWeight, price)
-      : fbaBulkyFee(tierInfo.tier, tierInfo.shippingWeight, price);
+      : tierInfo.tier === "overLimit" ? NaN : fbaBulkyFee(tierInfo.tier, tierInfo.shippingWeight, price);
   return {
     ...tierInfo,
     tierLabel: fbaTierLabels[tierInfo.tier] || tierInfo.tier,
@@ -926,7 +939,7 @@ function calculateCanadaFbaFee(category, price, pack) {
 
 function calculateUkFbaFee(category, pack) {
   const dimensionalKg = pack.volumeCm3 / 5000;
-  const shippingWeightKg = Math.max(pack.weightKg, dimensionalKg);
+  let shippingWeightKg = Math.max(pack.weightKg, dimensionalKg);
   const bands = {
     lightEnvelope: [
       [0.02, 1.83],
@@ -965,7 +978,7 @@ function calculateUkFbaFee(category, pack) {
   const lengthPlusGirth = pack.longestCm + 2 * (pack.middleCm + pack.shortestCm);
   let tier = "ukHeavyOversize";
   let tierLabel = "英国重型大件（估算）";
-  let baseFee = 13.04 + Math.max(0, Math.ceil(shippingWeightKg - 1)) * 0.09;
+  let baseFee = NaN;
   let estimated = false;
 
   if (pack.longestCm <= 33 && pack.middleCm <= 23 && pack.shortestCm <= 2.5 && pack.weightKg <= 0.1) {
@@ -984,32 +997,58 @@ function calculateUkFbaFee(category, pack) {
     tier = "ukExtraLargeEnvelope";
     tierLabel = "英国超大号信封";
     baseFee = findWeightBand(bands.extraLargeEnvelope, pack.weightKg)[1];
-  } else if (pack.longestCm <= 35 && pack.middleCm <= 25 && pack.shortestCm <= 12 && shippingWeightKg <= 3.9) {
+  } else if (category === "apparel" && pack.longestCm <= 45 && pack.middleCm <= 34 && pack.shortestCm <= 26 && pack.weightKg <= 11.9) {
+    const parcel = [
+      [35, 25, 7, 3.9, 2.83, 0.02, "小包裹 1"],
+      [35, 25, 9, 3.9, 2.87, 0.02, "小包裹 2"],
+      [35, 25, 12, 3.9, 2.91, 0.02, "小包裹 3"],
+      [40, 30, 6, 11.9, 2.97, 0.02, "中包裹 1"],
+      [40, 30, 20, 11.9, 3.10, 0.03, "中包裹 2"],
+      [45, 34, 10, 11.9, 3.34, 0.03, "大包裹 1"],
+      [45, 34, 26, 11.9, 3.97, 0.03, "大包裹 2"]
+    ].find(([l, m, s, w]) => pack.longestCm <= l && pack.middleCm <= m && pack.shortestCm <= s && pack.weightKg <= w);
+    shippingWeightKg = pack.weightKg;
+    tier = "ukSelectedParcel";
+    tierLabel = `英国服装/鞋靴 ${parcel[6]}`;
+    baseFee = parcel[4] + Math.max(0, Math.ceil((pack.weightKg - 0.1 - 1e-9) / 0.1)) * parcel[5];
+  } else if (pack.longestCm <= 35 && pack.middleCm <= 25 && pack.shortestCm <= 12 && pack.weightKg <= 3.9 && dimensionalKg <= 2.1) {
     tier = "ukSmallParcel";
     tierLabel = "英国小包裹";
     baseFee = findWeightBand(bands.smallParcel, shippingWeightKg)[1];
-  } else if (pack.longestCm <= 45 && pack.middleCm <= 34 && pack.shortestCm <= 26 && shippingWeightKg <= 11.9) {
+  } else if (pack.longestCm <= 45 && pack.middleCm <= 34 && pack.shortestCm <= 26 && pack.weightKg <= 11.9 && dimensionalKg <= 7.96) {
     tier = "ukStandardParcel";
     tierLabel = "英国标准包裹";
     baseFee = findWeightBand(bands.standardParcel, shippingWeightKg)[1];
   } else {
     estimated = true;
-    if (pack.longestCm <= 61 && pack.middleCm <= 46 && pack.shortestCm <= 46 && shippingWeightKg <= 23) {
+    if (pack.longestCm > 175 || lengthPlusGirth > 360 || pack.weightKg > 31.5) {
+      tier = "overLimit";
+      tierLabel = "英国特殊大件：请手填官方费用";
+    } else if (pack.longestCm <= 61 && pack.middleCm <= 46 && pack.shortestCm <= 46 && pack.weightKg <= 1.76 && dimensionalKg <= 25.82) {
       tier = "ukSmallOversize";
       tierLabel = "英国小号大件（估算）";
       baseFee = 3.49 + Math.max(0, Math.ceil(shippingWeightKg - 0.76)) * 0.25;
-    } else if (pack.longestCm <= 120 && pack.middleCm <= 60 && pack.shortestCm <= 60 && shippingWeightKg <= 23) {
+    } else if (pack.longestCm <= 101 && pack.middleCm <= 60 && pack.shortestCm <= 60 && pack.weightKg <= 23 && dimensionalKg <= 72.72) {
+      tier = "ukStandardOversize";
+      tierLabel = pack.weightKg <= 15 ? "英国标准大件（轻）" : "英国标准大件（重）";
+      baseFee = pack.weightKg <= 15
+        ? 4.35 + Math.max(0, Math.ceil(shippingWeightKg - 0.76)) * 0.15
+        : 6.58 + Math.max(0, Math.ceil(shippingWeightKg - 15.76)) * 0.08;
+    } else if (pack.longestCm <= 120 && pack.middleCm <= 60 && pack.shortestCm <= 60 && pack.weightKg <= 23 && dimensionalKg <= 86.4) {
       tier = "ukStandardOversize";
       tierLabel = "英国标准大件（估算）";
-      baseFee = 5.67 + Math.max(0, Math.ceil(shippingWeightKg - 1)) * 0.07;
-    } else if (pack.longestCm <= 175 && lengthPlusGirth <= 360 && shippingWeightKg <= 31.5) {
+      baseFee = 5.67 + Math.max(0, Math.ceil(shippingWeightKg - 0.76)) * 0.07;
+    } else if (pack.weightKg <= 23 && dimensionalKg <= 126) {
       tier = "ukBulkyOversize";
       tierLabel = "英国大件（估算）";
-      baseFee = 10.20 + Math.max(0, Math.ceil(shippingWeightKg - 1)) * 0.24;
+      baseFee = 10.20 + Math.max(0, Math.ceil(shippingWeightKg - 0.76)) * 0.24;
+    } else if (pack.weightKg > 23 && pack.weightKg <= 31.5 && dimensionalKg <= 126) {
+      baseFee = 13.04 + Math.max(0, Math.ceil(shippingWeightKg - 31.5)) * 0.09;
     }
   }
 
   if (category === "dangerous") baseFee += 0.10;
+  if (tier.includes("Envelope")) shippingWeightKg = pack.weightKg;
 
   return {
     tier,
@@ -1018,11 +1057,14 @@ function calculateUkFbaFee(category, pack) {
     shippingWeightLabel: `${roundUpStep(shippingWeightKg, 0.01).toFixed(2)} kg`,
     baseFee,
     estimated,
-    note: "英国站按 Amazon Europe 2026 UK 标准FBA费率估算；大件和危险品附加仅做运营测算，最终费用请以上传前 Seller Central 预览为准。"
+    note: "英国站按 2026-04-17 官方标准FBA费率表估算；服装/鞋靴包裹使用按100g递增费率。未计算低价FBA、SIPP优惠及其他特殊类目费率。"
   };
 }
 
 function calculateFbaFee() {
+  if (["fbaLength", "fbaWidth", "fbaHeight", "fbaWeight"].some((id) => numberValue(id) <= 0)) {
+    return { tier: "overLimit", tierLabel: "请填写有效尺寸和重量", shippingWeightLabel: "--", baseFee: NaN, surcharge: NaN, finalFee: NaN, note: "长、宽、高和包装重量必须大于 0。" };
+  }
   const category = byId("fbaCategory").value;
   const price = numberValue("salePrice");
   const config = getProfitMarketplaceConfig();
@@ -1035,7 +1077,7 @@ function calculateFbaFee() {
   } else {
     result = calculateUsFbaFee(category, price);
   }
-  const surcharge = config.surchargeEligible && byId("fbaIncludeSurcharge").checked ? result.baseFee * fbaSurchargeRate : 0;
+  const surcharge = byId("fbaIncludeSurcharge").checked ? result.baseFee * (config.fbaRegion === "UK" ? 0.015 : fbaSurchargeRate) : 0;
   return {
     ...result,
     surcharge,
@@ -1054,13 +1096,20 @@ function updateFbaCalculator() {
   byId("fbaBaseFee").textContent = formatProfitMoney(result.baseFee, profitConfig);
   byId("fbaSurcharge").textContent = formatProfitMoney(result.surcharge, profitConfig);
   byId("fbaFinalFee").textContent = formatProfitMoney(result.finalFee, profitConfig);
-  const surchargeNote = profitConfig.surchargeEligible
-    ? "可选择叠加 3.5% 燃油/物流附加费。"
-    : "英国站不使用美国/加拿大 3.5% 燃油/物流附加费。";
+  const surchargePercent = profitConfig.fbaRegion === "UK" ? "1.5%" : "3.5%";
+  byId("fbaSurchargeLabel").textContent = `包含 2026-04-17 起 ${surchargePercent} 燃油/物流附加费`;
+  const surchargeNote = `附加费按配送费的 ${surchargePercent} 计算。仅估算配送费，不含仓储、入库配置、低库存及旺季等费用。`;
+  const source = profitConfig.fbaRegion === "UK"
+    ? "https://m.media-amazon.com/images/G/02/sell/images/260410-FBA-Rate-Card-EN.pdf"
+    : `https://sellercentral.amazon.${profitConfig.fbaRegion === "CA" ? "ca" : "com"}/help/hub/reference/external/GABBX6GZPA8MSZGW`;
+  byId("fbaRateSource").innerHTML = `<a href="${source}" target="_blank" rel="noopener noreferrer">亚马逊官方费率表</a> · ${profitConfig.fbaRegion === "UK" ? "2026-04-17 版非旺季标准；特殊类目另计" : "基础费率沿用现有估算表，最新完整表尚未核实；3.5% 附加费已核实"} · 核对日期 2026-09-10`;
   byId("fbaPolicyNote").textContent = [result.note, surchargeNote].filter(Boolean).join(" ");
 
-  if (fbaAutoSync?.checked && Number.isFinite(result.finalFee)) {
+  fbaAutoSync.disabled = byId("fulfillmentMethod").value === "FBM";
+  if (fbaAutoSync?.checked && !fbaAutoSync.disabled && Number.isFinite(result.finalFee)) {
     byId("fbaFee").value = result.finalFee.toFixed(2);
+  } else if (fbaAutoSync?.checked && !fbaAutoSync.disabled) {
+    byId("fbaFee").value = "";
   }
 }
 
@@ -1069,49 +1118,67 @@ function updateProfit() {
   const config = getProfitMarketplaceConfig();
   const price = numberValue("salePrice");
   const cnyRate = Math.max(0.01, numberValue("usdCnyRate") || config.defaultRate);
-  const vatRate = config.fbaRegion === "UK" ? Math.max(0, numberValue("vatRate") || config.vatRate) / 100 : 0;
-  const netSales = vatRate > 0 ? price / (1 + vatRate) : price;
-  const vatAmount = Math.max(0, price - netSales);
+  const isFbm = byId("fulfillmentMethod").value === "FBM";
+  byId("buyerShippingField").hidden = !isFbm;
+  byId("fbmShippingCostField").hidden = !isFbm;
+  byId("fbaFeeField").hidden = isFbm;
+  if (!isFbm && byId("fbaAutoSync").checked && !Number.isFinite(calculateFbaFee().finalFee)) {
+    ["profitValue", "profitValueCny", "profitMargin", "breakEvenAcos", "minPrice"].forEach((id) => { byId(id).textContent = "待核实"; });
+    byId("profitBreakdown").textContent = "无法自动估算配送费。请修正尺寸/重量，或关闭自动同步并填写官方费用后再计算。";
+    return;
+  }
+  const buyerShipping = isFbm ? numberValue("buyerShipping") : 0;
+  const totalSales = price + buyerShipping;
+  const vatRate = config.fbaRegion === "UK" ? Math.max(0, numberValue("vatRate")) / 100 : 0;
+  const netSales = totalSales / (1 + vatRate);
+  const vatAmount = Math.max(0, totalSales - netSales);
   const unitCostCny = numberValue("unitCost");
   const unitCost = unitCostCny / cnyRate;
   const referralRate = numberValue("referralRate") / 100;
-  const fba = numberValue("fbaFee");
-  const ad = numberValue("adCost");
+  const fba = isFbm ? numberValue("fbmShippingCost") / cnyRate : numberValue("fbaFee");
+  const adRate = Math.max(0, numberValue("acoas")) / 100;
+  const ad = price * adRate;
+  byId("adCostHint").textContent = `广告费 = 商品售价 × ACOAS = ${formatProfitMoney(ad, config)}；不含买家运费。`;
   const shippingCny = numberValue("shippingCost");
   const shipping = shippingCny / cnyRate;
   const refundRate = numberValue("refundRate") / 100;
   const targetMargin = numberValue("targetMargin") / 100;
   const refundReserveRate = refundRate * 0.18;
   const refundReserve = netSales * refundReserveRate;
-  const referral = netSales * referralRate;
+  const referral = totalSales * referralRate;
   const profit = netSales - unitCost - referral - fba - ad - shipping - refundReserve;
   const profitCny = profit * cnyRate;
-  const margin = price ? profit / price : 0;
+  const margin = totalSales ? profit / totalSales : 0;
   const breakEven = price ? (netSales - unitCost - referral - fba - shipping - refundReserve) / price : 0;
-  const denominator = (1 / (1 + vatRate)) * (1 - referralRate - refundReserveRate) - targetMargin;
-  const minPrice = denominator > 0 ? (unitCost + fba + ad + shipping) / denominator : 0;
+  const retainedRate = (1 - refundReserveRate) / (1 + vatRate) - referralRate - targetMargin;
+  const denominator = retainedRate - adRate;
+  const minPrice = denominator > 0 ? Math.max(0, (unitCost + fba + shipping - buyerShipping * retainedRate) / denominator) : NaN;
 
   byId("profitValue").textContent = formatProfitMoney(profit, config);
   byId("profitValueCny").textContent = cnyMoney.format(profitCny);
   byId("profitMargin").textContent = percent.format(margin);
   byId("breakEvenAcos").textContent = percent.format(Math.max(0, breakEven));
-  byId("minPrice").textContent = formatProfitMoney(Math.max(0, minPrice), config);
+  byId("minPrice").textContent = Number.isFinite(minPrice) ? formatProfitMoney(minPrice, config) : "无法达到";
   const breakdown = byId("profitBreakdown");
   if (breakdown) {
     const rows = [
       ["站点", config.label],
+      ["配送方式", isFbm ? "FBM 自配送" : "FBA 亚马逊配送"],
       ["销售价格", formatProfitMoney(price, config)],
+      ["买家运费收入", formatProfitMoney(buyerShipping, config)],
+      ["订单收入", formatProfitMoney(totalSales, config)],
       ["VAT 扣除", vatRate > 0 ? `${formatProfitMoney(vatAmount, config)}（${percent.format(vatRate)}，含税价倒扣）` : "无"],
       ["净销售额", formatProfitMoney(netSales, config)],
       ["采购成本", `${cnyMoney.format(unitCostCny)} ÷ ${cnyRate.toFixed(4)} = ${formatProfitMoney(unitCost, config)}`],
       ["头程/包装", `${cnyMoney.format(shippingCny)} ÷ ${cnyRate.toFixed(4)} = ${formatProfitMoney(shipping, config)}`],
-      ["佣金", `${formatProfitMoney(netSales, config)} × ${percent.format(referralRate)} = ${formatProfitMoney(referral, config)}`],
-      ["FBA 费用", formatProfitMoney(fba, config)],
-      ["广告费", formatProfitMoney(ad, config)],
+      ["佣金（含买家运费）", `${formatProfitMoney(totalSales, config)} × ${percent.format(referralRate)} = ${formatProfitMoney(referral, config)}`],
+      [isFbm ? "FBM 发货成本" : "FBA 费用", formatProfitMoney(fba, config)],
+      ["广告费 / ACOAS", `${formatProfitMoney(price, config)} × ${percent.format(adRate)} = ${formatProfitMoney(ad, config)}`],
       ["退款预留", `${formatProfitMoney(netSales, config)} × ${percent.format(refundRate)} × 18% = ${formatProfitMoney(refundReserve, config)}`],
       ["单件利润", `${formatProfitMoney(profit, config)} / ${cnyMoney.format(profitCny)}`],
-      ["利润率", `${formatProfitMoney(profit, config)} ÷ ${formatProfitMoney(price || 1, config)} = ${percent.format(margin)}`],
-      ["建议底价", denominator > 0 ? formatProfitMoney(Math.max(0, minPrice), config) : "目标毛利过高，无法计算"]
+      ["利润率（订单收入）", totalSales ? `${formatProfitMoney(profit, config)} ÷ ${formatProfitMoney(totalSales, config)} = ${percent.format(margin)}` : "无收入"],
+      ["建议商品底价", denominator > 0 ? formatProfitMoney(minPrice, config) : "目标毛利与广告占比过高，无法计算"],
+      ["测算口径", "底价按当前配送费、买家运费与广告占比测算；售价跨费率档位时需重新核算。退款预留采用退款率 × 净销售额 × 18% 的内部估算。"]
     ];
     breakdown.innerHTML = rows
       .map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`)
@@ -1467,6 +1534,27 @@ function createBulkRow(overrides = {}) {
   };
 }
 
+function createCampaignRow(campaign, overrides = {}) {
+  const videoMeta = isVideoCampaign(campaign)
+    ? {
+        "Campaign Type": "Sponsored Brands",
+        "Ad Format": "Video",
+        "Media ID": campaign.creativeAssetId || "",
+        "Brand Entity ID": campaign.brandEntityId || "",
+        "Brand Name": campaign.brandName || "",
+        "Landing Page": campaign.landingPage || "",
+        "Video Ad Format": "Sponsored Brands video"
+      }
+    : {
+        "Campaign Type": "Sponsored Products"
+      };
+  return createBulkRow({
+    Product: campaignProductFor(campaign.type),
+    ...videoMeta,
+    ...overrides
+  });
+}
+
 function getBulkSettings() {
   return {
     portfolioId: byId("bulkPortfolioId").value.trim(),
@@ -1493,12 +1581,20 @@ function saveAccountSkus() {
 
 function readBulkCampaigns() {
   const campaigns = readJsonStorage(accountStorageKey("bulkCampaigns"), defaultBulkCampaigns);
-  return Array.isArray(campaigns) && campaigns.length
+  const allowedTypes = new Set(campaignTypeOptions.map((option) => option.value));
+  const restored = Array.isArray(campaigns) && campaigns.length
     ? campaigns.map((campaign) => ({
         ...campaign,
+        type: allowedTypes.has(campaign.type) || isVideoCampaign(campaign) ? campaign.type : "keyword",
+        creativeAssetId: campaign.creativeAssetId || "",
+        brandEntityId: campaign.brandEntityId || "",
+        brandName: campaign.brandName || "",
+        landingPage: campaign.landingPage || "",
         biddingStrategy: normalizeBiddingStrategy(campaign.biddingStrategy)
       }))
     : defaultBulkCampaigns();
+  // Preserve retired video records for account sync, without rendering or exporting them.
+  return restored.some((campaign) => !isVideoCampaign(campaign)) ? restored : [...restored, ...defaultBulkCampaigns()];
 }
 
 function saveBulkCampaigns() {
@@ -1535,15 +1631,37 @@ function defaultCampaignName(index, marketplace) {
   return `SP-${marketplace}-Campaign-${index + 1}`;
 }
 
+function campaignNamePrefix(campaign) {
+  return isVideoCampaign(campaign) ? "SBV" : "SP";
+}
+
+function defaultCampaignNameFor(campaign, index, marketplace) {
+  return `${campaignNamePrefix(campaign)}-${marketplace}-Campaign-${index + 1}`;
+}
+
 function adGroupNameFor(campaign, campaignName) {
   const suffix = String(campaign.adGroupSuffix || "1").trim();
   return `${campaignName}-AG-${suffix || "1"}`;
 }
 
 function targetPlaceholderFor(type) {
+  if (type === "videoAsin") return "商品 ASIN，每行一个";
+  if (type === "videoKeyword") return "视频广告关键词，每行一个";
   if (type === "asin") return "商品 ASIN，每行一个";
   if (type === "auto") return "使用右侧四个自动投放分组";
   return "travel mug, 0.95";
+}
+
+function campaignProductFor(type) {
+  return campaignTypeOptions.find((option) => option.value === type)?.product || "Sponsored Products";
+}
+
+function isVideoCampaign(campaign) {
+  return String(campaign.type || "").startsWith("video");
+}
+
+function videoCampaignTargetMode(campaign) {
+  return campaign.type === "videoAsin" ? "asin" : "keyword";
 }
 
 function createBulkCampaign(overrides = {}) {
@@ -1565,6 +1683,10 @@ function createBulkCampaign(overrides = {}) {
     keywords: "",
     keywordBids: "",
     targets: "",
+    creativeAssetId: "",
+    brandEntityId: "",
+    brandName: "",
+    landingPage: "",
     asinTargets: defaultAsinTargets(0.45),
     autoTargets: defaultAutoTargets(0.45),
     negativeMatchTypes: ["negative exact"],
@@ -1575,9 +1697,9 @@ function createBulkCampaign(overrides = {}) {
   };
 }
 
-function buildProductAdRows(products, campaignName, adGroupName) {
+function buildProductAdRows(campaign, products, campaignName, adGroupName) {
   return products.map((product) =>
-    createBulkRow({
+    createCampaignRow(campaign, {
       Entity: "Product ad",
       "Campaign Id": campaignName,
       "Ad Group Id": adGroupName,
@@ -1587,13 +1709,41 @@ function buildProductAdRows(products, campaignName, adGroupName) {
   );
 }
 
+function buildVideoAdRows(campaign, campaignName, adGroupName, products) {
+  const creativeAssetId = String(campaign.creativeAssetId || "").trim();
+  const brandEntityId = String(campaign.brandEntityId || "").trim();
+  const brandName = String(campaign.brandName || "").trim();
+  const landingPage = String(campaign.landingPage || "").trim();
+  const creativeAsin = products.find((product) => product.asin)?.asin || "";
+  const rows = products.length ? products : [{ asin: "", sku: "" }];
+  return rows.map((product) =>
+    createCampaignRow(campaign, {
+      Entity: "Video ad",
+      "Campaign Id": campaignName,
+      "Ad Group Id": adGroupName,
+      asin: product.asin || "",
+      sku: product.sku || "",
+      "Campaign Type": "Sponsored Brands",
+      "Ad Format": "Video",
+      "Media ID": creativeAssetId,
+      "Creative ASINs": creativeAsin || product.asin || "",
+      "Brand Entity ID": brandEntityId,
+      "Creative Asset Id": creativeAssetId,
+      "Audience Id": creativeAssetId,
+      "Brand Name": brandName,
+      "Landing Page": landingPage,
+      "Video Ad Format": "Sponsored Brands video"
+    })
+  );
+}
+
 function buildTargetRows(campaign, campaignName, adGroupName, defaultBid) {
-  if (campaign.type === "asin") {
+  if (campaign.type === "asin" || campaign.type === "videoAsin") {
     const asins = parseAsinTargets(campaign.targets).filter((item) => item.asin);
     const targetTypes = normalizeAsinTargetTypes(campaign, defaultBid).filter((item) => item.enabled);
     return asins.flatMap((asinItem) =>
       targetTypes.map((targetType) =>
-        createBulkRow({
+        createCampaignRow(campaign, {
           Entity: "Product targeting",
           "Campaign Id": campaignName,
           "Ad Group Id": adGroupName,
@@ -1606,7 +1756,7 @@ function buildTargetRows(campaign, campaignName, adGroupName, defaultBid) {
 
   if (campaign.type === "auto") {
     return normalizeAutoTargets(campaign, defaultBid).map((item) =>
-      createBulkRow({
+      createCampaignRow(campaign, {
         Entity: "Product targeting",
         "Campaign Id": campaignName,
         "Ad Group Id": adGroupName,
@@ -1620,7 +1770,7 @@ function buildTargetRows(campaign, campaignName, adGroupName, defaultBid) {
   const matchTypes = normalizeKeywordMatchTypes(campaign);
   return keywordEntriesForCampaign(campaign, defaultBid).flatMap((item) =>
     matchTypes.map((match) =>
-      createBulkRow({
+      createCampaignRow(campaign, {
         Entity: "Keyword",
         "Campaign Id": campaignName,
         "Ad Group Id": adGroupName,
@@ -1633,7 +1783,7 @@ function buildTargetRows(campaign, campaignName, adGroupName, defaultBid) {
 }
 
 function buildRowsForCampaign(campaign, index, settings) {
-  const campaignName = campaign.name.trim() || defaultCampaignName(index, settings.marketplace);
+  const campaignName = campaign.name.trim() || defaultCampaignNameFor(campaign, index, settings.marketplace);
   const adGroupName = adGroupNameFor(campaign, campaignName);
   const budget = readCampaignNumber(campaign, "budget", 10);
   const defaultBid = readCampaignNumber(campaign, "defaultBid", 0.45);
@@ -1641,9 +1791,10 @@ function buildRowsForCampaign(campaign, index, settings) {
   const targetingType = campaign.type === "auto" ? "auto" : "manual";
   const products = parseBulkProducts(campaign.products);
   const negatives = negativeEntriesForCampaign(campaign);
+  const videoMode = isVideoCampaign(campaign);
 
   return [
-    createBulkRow({
+    createCampaignRow(campaign, {
       Entity: "Campaign",
       "Campaign Id": campaignName,
       "Portfolio Id": settings.portfolioId,
@@ -1651,10 +1802,17 @@ function buildRowsForCampaign(campaign, index, settings) {
       "Start Date": settings.startDate,
       "Targeting Type": targetingType === "auto" ? "Auto" : "Manual",
       "Daily Budget": budget,
-      "Bidding Strategy": biddingStrategy
+      "Bidding Strategy": biddingStrategy,
+      "Campaign Type": isVideoCampaign(campaign) ? "Sponsored Brands" : "Sponsored Products",
+      "Ad Format": isVideoCampaign(campaign) ? "Video" : "",
+      "Media ID": isVideoCampaign(campaign) ? campaign.creativeAssetId || "" : "",
+      "Creative ASINs": isVideoCampaign(campaign) ? products.find((product) => product.asin)?.asin || "" : "",
+      "Brand Entity ID": isVideoCampaign(campaign) ? campaign.brandEntityId || "" : "",
+      "Brand Name": campaign.brandName || "",
+      "Landing Page": campaign.landingPage || ""
     }),
     ...["placement top", "placement rest of search", "placement product page"].map((placement) =>
-      createBulkRow({
+      createCampaignRow(campaign, {
         Entity: "Bidding adjustment",
         "Campaign Id": campaignName,
         State: "",
@@ -1663,17 +1821,17 @@ function buildRowsForCampaign(campaign, index, settings) {
         Percentage: 0
       })
     ),
-    createBulkRow({
+    createCampaignRow(campaign, {
       Entity: "Ad group",
       "Campaign Id": campaignName,
       "Ad Group Id": adGroupName,
       "Ad Group Name": adGroupName,
       "Ad Group Default Bid": defaultBid
     }),
-    ...buildProductAdRows(products, campaignName, adGroupName),
+    ...(videoMode ? buildVideoAdRows(campaign, campaignName, adGroupName, products) : buildProductAdRows(campaign, products, campaignName, adGroupName)),
     ...buildTargetRows(campaign, campaignName, adGroupName, defaultBid),
     ...negatives.map((item) =>
-      createBulkRow({
+      createCampaignRow(campaign, {
         Entity: "Negative Keyword",
         "Campaign Id": campaignName,
         "Ad Group Id": adGroupName,
@@ -1687,7 +1845,7 @@ function buildRowsForCampaign(campaign, index, settings) {
 function buildBulkRows() {
   const settings = getBulkSettings();
   return bulkCampaigns
-    .filter((campaign) => campaign.enabled)
+    .filter((campaign) => campaign.enabled && !isVideoCampaign(campaign))
     .flatMap((campaign, index) => buildRowsForCampaign(campaign, index, settings));
 }
 
@@ -1713,7 +1871,7 @@ function columnName(index) {
   return name;
 }
 
-const referenceColumnWidths = [12, 16, 8, 20, 20, 12, 8, 10, 14, 20, 20, 10, 10, 10, 8, 10, 14, 14, 14, 8, 14, 10, 22, 20, 10, 28, 12, 16, 16, 14];
+const referenceColumnWidths = [12, 16, 8, 20, 20, 12, 8, 10, 14, 20, 20, 10, 10, 10, 8, 10, 14, 14, 14, 8, 14, 10, 22, 20, 10, 28, 12, 16, 16, 14, 20, 18, 26, 18];
 
 function styleIndexForEntity(entity) {
   const styles = {
@@ -1723,7 +1881,8 @@ function styleIndexForEntity(entity) {
     "Product ad": 5,
     "Product targeting": 6,
     Keyword: 7,
-    "Negative Keyword": 7
+    "Negative Keyword": 7,
+    "Video ad": 5
   };
   return styles[entity] || 7;
 }
@@ -1940,7 +2099,7 @@ function bulkRowsToXlsxBlob(rows = bulkRows) {
       name: "xl/workbook.xml",
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets><sheet name="Sponsored Products" sheetId="1" r:id="rId1"/></sheets>
+  <sheets><sheet name="Bulk Ads" sheetId="1" r:id="rId1"/></sheets>
 </workbook>`
     },
     {
@@ -2043,6 +2202,20 @@ function renderKeywordMatchTypeEditor(campaign) {
   `;
 }
 
+function renderVideoCreativeEditor(campaign) {
+  if (!isVideoCampaign(campaign)) {
+    return `<span class="disabled-cell">不适用</span>`;
+  }
+  return `
+    <div class="video-creative-editor">
+      <input data-field="creativeAssetId" type="text" value="${escapeHtml(campaign.creativeAssetId || "")}" placeholder="视频素材ID（Media ID）" title="填写 Amazon Ads 素材库里的视频 Media ID / Creative Asset ID" aria-label="视频素材 ID" />
+      <input data-field="brandEntityId" type="text" value="${escapeHtml(campaign.brandEntityId || "")}" placeholder="品牌实体ID（Brand Entity ID）" title="填写 Amazon Ads 品牌实体 ID" aria-label="品牌实体 ID" />
+      <input data-field="brandName" type="text" value="${escapeHtml(campaign.brandName || "")}" placeholder="品牌名（备注，可选）" title="填写品牌名，仅作备注和核对" aria-label="品牌名" />
+      <input data-field="landingPage" type="text" value="${escapeHtml(campaign.landingPage || "")}" placeholder="落地页URL（店铺/商品页）" title="填写品牌旗舰店或商品详情页链接" aria-label="落地页" />
+    </div>
+  `;
+}
+
 function renderKeywordTargetEditor(campaign) {
   return `
     <div class="keyword-target-editor">
@@ -2076,6 +2249,7 @@ function renderNegativeKeywordEditor(campaign) {
 function renderBulkCampaignTable() {
   const body = byId("bulkCampaignTableBody");
   body.innerHTML = bulkCampaigns
+    .filter((campaign) => !isVideoCampaign(campaign))
     .map(
       (campaign, index) => `
         <tr data-campaign-id="${campaign.id}">
@@ -2097,14 +2271,12 @@ function renderBulkCampaignTable() {
           </td>
           <td>
             <select data-field="type" aria-label="投放类型">
-              <option value="keyword" ${campaign.type === "keyword" ? "selected" : ""}>关键词投放</option>
-              <option value="asin" ${campaign.type === "asin" ? "selected" : ""}>商品投放（ASIN）</option>
-              <option value="auto" ${campaign.type === "auto" ? "selected" : ""}>自动投放</option>
+              ${optionTags(campaignTypeOptions, campaign.type || "keyword")}
             </select>
           </td>
           <td>
             ${
-              campaign.type === "keyword"
+              campaign.type === "keyword" || campaign.type === "videoKeyword"
                 ? renderKeywordMatchTypeEditor(campaign)
                 : `<span class="disabled-cell">不适用</span>`
             }
@@ -2124,13 +2296,13 @@ function renderBulkCampaignTable() {
             <input data-field="defaultBid" type="number" min="0.02" step="0.01" value="${escapeHtml(campaign.defaultBid)}" />
           </td>
           <td>
-            <textarea data-field="products" rows="3" placeholder="B0ASIN0001, SKU">${escapeHtml(campaign.products)}</textarea>
+            <textarea data-field="products" rows="3" placeholder="${isVideoCampaign(campaign) ? "B0ASIN0001, SKU（视频广告第一列必须是真实 ASIN）" : "B0ASIN0001, SKU"}">${escapeHtml(campaign.products)}</textarea>
           </td>
           <td>
             ${
               campaign.type === "auto"
                 ? renderAutoTargetEditor(campaign)
-                : campaign.type === "asin"
+                : campaign.type === "asin" || campaign.type === "videoAsin"
                   ? renderAsinTargetEditor(campaign)
                   : renderKeywordTargetEditor(campaign)
             }
@@ -2160,7 +2332,7 @@ function updateBulkCampaignFromControl(control) {
     }
   } else if (field === "type") {
     campaign[field] = control.value;
-    if (control.value === "keyword") {
+    if (control.value === "keyword" || control.value === "videoKeyword") {
       campaign.matchTypes = normalizeKeywordMatchTypes(campaign);
       campaign.keywords ??= keywordLinesForEditor(campaign);
       campaign.keywordBids ??= keywordBidLinesForEditor(campaign);
@@ -2168,8 +2340,14 @@ function updateBulkCampaignFromControl(control) {
     if (control.value === "auto" && !campaign.autoTargets) {
       campaign.autoTargets = defaultAutoTargets(readCampaignNumber(campaign, "defaultBid", 0.45));
     }
-    if (control.value === "asin" && !campaign.asinTargets) {
+    if ((control.value === "asin" || control.value === "videoAsin") && !campaign.asinTargets) {
       campaign.asinTargets = defaultAsinTargets(readCampaignNumber(campaign, "defaultBid", 0.45));
+    }
+    if (isVideoCampaign(campaign)) {
+      campaign.creativeAssetId ??= "";
+      campaign.brandEntityId ??= "";
+      campaign.brandName ??= "";
+      campaign.landingPage ??= "";
     }
   } else {
     campaign[field] = control.value;
@@ -2249,7 +2427,7 @@ function duplicateBulkCampaign(id) {
 }
 
 function deleteBulkCampaign(id) {
-  if (bulkCampaigns.length === 1) return;
+  if (bulkCampaigns.filter((campaign) => !isVideoCampaign(campaign)).length <= 1) return;
   bulkCampaigns = bulkCampaigns.filter((campaign) => campaign.id !== id);
 }
 
@@ -2263,7 +2441,7 @@ function campaignHasTargets(campaign) {
   if (campaign.type === "auto") {
     return normalizeAutoTargets(campaign, defaultBid).some((item) => item.enabled);
   }
-  if (campaign.type === "asin") {
+  if (campaign.type === "asin" || campaign.type === "videoAsin") {
     const asins = parseAsinTargets(campaign.targets);
     const hasTargetType = normalizeAsinTargetTypes(campaign, defaultBid).some((item) => item.enabled);
     return hasTargetType && asins.length > 0 && asins.every((item) => isAsin(item.asin) && !isPlaceholderValue(item.asin));
@@ -2273,11 +2451,23 @@ function campaignHasTargets(campaign) {
   return matchTypes.length > 0 && keywords.length > 0 && keywords.every((item) => item.keyword && !isPlaceholderValue(item.keyword));
 }
 
+function campaignHasVideoCreative(campaign) {
+  if (!isVideoCampaign(campaign)) return true;
+  const products = parseBulkProducts(campaign.products);
+  return (
+    Boolean(String(campaign.creativeAssetId || "").trim()) &&
+    !isPlaceholderValue(campaign.creativeAssetId) &&
+    Boolean(String(campaign.brandEntityId || "").trim()) &&
+    !isPlaceholderValue(campaign.brandEntityId) &&
+    products.some((product) => isAsin(product.asin) && !isPlaceholderValue(product.asin))
+  );
+}
+
 function getBulkValidation(rows = bulkRows) {
   const portfolioId = byId("bulkPortfolioId").value.trim();
-  const activeCampaigns = bulkCampaigns.filter((campaign) => campaign.enabled);
+  const activeCampaigns = bulkCampaigns.filter((campaign) => campaign.enabled && !isVideoCampaign(campaign));
   const productsByCampaign = activeCampaigns.map((campaign) => parseBulkProducts(campaign.products));
-  const campaignsHaveNames = activeCampaigns.every((campaign, index) => (campaign.name.trim() || defaultCampaignName(index, byId("bulkMarketplace").value)).length);
+  const campaignsHaveNames = activeCampaigns.every((campaign, index) => (campaign.name.trim() || defaultCampaignNameFor(campaign, index, byId("bulkMarketplace").value)).length);
   const campaignsHaveNumbers = activeCampaigns.every((campaign) => readCampaignNumber(campaign, "budget", 0) > 0 && readCampaignNumber(campaign, "defaultBid", 0) > 0);
   const campaignsHaveProducts = productsByCampaign.every((products) => products.length > 0 && products.every(productIsUploadable));
   const campaignsHaveTargets = activeCampaigns.every(campaignHasTargets);
@@ -2300,7 +2490,7 @@ function getBulkValidation(rows = bulkRows) {
     {
       ok: campaignsHaveTargets,
       title: "Target Rows",
-      body: "关键词投放需填写关键词并至少选择一个匹配类型；竞价可用批量竞价，也可逐行覆盖。商品投放（ASIN）需填写真实 10 位 ASIN。"
+      body: "关键词需填写关键词并至少选择一个匹配类型；商品投放需填写真实 10 位 ASIN。"
     },
     {
       ok: rows.length <= 1000,
@@ -2355,10 +2545,12 @@ function renderBulkAds() {
         ? `${row["Keyword Text"]} · ${row["Match Type"] || "exact"}`
         : row["Product Targeting Expression"]
           ? productTargetPreview(row["Product Targeting Expression"])
-          : row["Targeting Type"] || "—";
+          : row["Creative Asset Id"]
+            ? `视频素材 ${row["Creative Asset Id"]}`
+            : row["Targeting Type"] || "—";
       return `
         <tr>
-          <td>${row.Entity}</td>
+          <td>${row.Product === "Sponsored Products" ? row.Entity : `${row.Product} / ${row.Entity}`}</td>
           <td>${row["Campaign Name"] || row["Campaign Id"] || "—"}</td>
           <td>${row["Ad Group Name"] || row["Ad Group Id"] || "—"}</td>
           <td>${row["Portfolio Id"] || "—"}</td>
@@ -2932,6 +3124,8 @@ async function registerOrLogin(phone, password) {
 }
 
 function logoutAccount() {
+  byId("negativeKeywordForm").reset();
+  resetNegativeKeywordResults("请粘贴关键词并填写产品相关词根。");
   currentAccountPhone = "";
   currentAccountPasswordHash = "";
   cloudSyncEnabled = true;
@@ -2997,7 +3191,68 @@ function renderAll() {
   renderTasks();
 }
 
+function filterNegativeKeywords(input, rootInput, mode = "word") {
+  const normalize = (value) => value.trim().replace(/\s+/gu, " ").toLowerCase();
+  const lines = input.split(/\r?\n/u).map((line) => line.trim().replace(/\s+/gu, " ")).filter(Boolean);
+  const keywords = [...new Map(lines.map((line) => [normalize(line), line])).values()];
+  const roots = [...new Set(rootInput.split(/[\r\n,，]+/u).map(normalize).filter(Boolean))];
+  if (!roots.length) throw new Error("请填写至少一个产品相关词根，例如产品名称或同义词。");
+  const escapePattern = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const patterns = roots.map((root) => new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escapePattern(root)}(?=$|[^\\p{L}\\p{N}_])`, "u"));
+  const results = keywords.filter((keyword) => {
+    const value = normalize(keyword);
+    return !roots.some((root, index) => mode === "contains" ? value.includes(root) : patterns[index].test(value));
+  });
+  return { results, total: lines.length, unique: keywords.length, duplicates: lines.length - keywords.length };
+}
+
+function resetNegativeKeywordResults(message = "输入已更新，请重新筛选。") {
+  byId("negativeKeywordOutput").value = "";
+  byId("negativeKeywordStatus").textContent = message;
+  byId("copyNegativeKeywords").disabled = true;
+  byId("downloadNegativeKeywords").disabled = true;
+}
+
+function bindNegativeKeywordEvents() {
+  byId("negativeKeywordForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    try {
+      const result = filterNegativeKeywords(byId("negativeKeywordInput").value, byId("negativeKeywordRoots").value, byId("negativeKeywordMode").value);
+      if (!result.total) { resetNegativeKeywordResults("请先粘贴关键词，每行一个。"); return; }
+      byId("negativeKeywordOutput").value = result.results.join("\n");
+      byId("negativeKeywordStatus").textContent = `原始 ${result.total} 条 · 去重 ${result.duplicates} 条 · 命中相关词根 ${result.unique - result.results.length} 条 · 待否定候选 ${result.results.length} 条`;
+      byId("copyNegativeKeywords").disabled = !result.results.length;
+      byId("downloadNegativeKeywords").disabled = !result.results.length;
+    } catch (error) { resetNegativeKeywordResults(error.message); }
+  });
+  ["negativeKeywordInput", "negativeKeywordRoots", "negativeKeywordMode"].forEach((id) => {
+    byId(id).addEventListener("input", () => resetNegativeKeywordResults());
+  });
+  byId("copyNegativeKeywords").addEventListener("click", async () => {
+    const output = byId("negativeKeywordOutput");
+    if (!output.value) return;
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(output.value);
+      else { output.focus(); output.select(); if (!document.execCommand("copy")) throw new Error("copy"); }
+      byId("negativeKeywordStatus").textContent = `已复制 ${output.value.split("\n").length} 条待否定候选。`;
+    } catch { byId("negativeKeywordStatus").textContent = "复制失败，请选中结果手动复制。"; }
+  });
+  byId("downloadNegativeKeywords").addEventListener("click", () => {
+    const value = byId("negativeKeywordOutput").value;
+    if (!value) return;
+    const url = URL.createObjectURL(new Blob(["\ufeff", value], { type: "text/plain;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "待否定候选关键词.txt";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+}
+
 function bindEvents() {
+  bindNegativeKeywordEvents();
   byId("authForm").addEventListener("submit", handleAuthSubmit);
 
   byId("logoutButton").addEventListener("click", logoutAccount);
@@ -3038,7 +3293,7 @@ function bindEvents() {
       exchangeRateManuallyEdited = true;
       setExchangeRateStatus("使用手动汇率");
     }
-    if (event.target.id === "salePrice") updateFbaCalculator();
+    if (["salePrice", "fulfillmentMethod"].includes(event.target.id)) updateFbaCalculator();
     updateProfit();
   });
   byId("fbaFeeForm").addEventListener("input", () => {

@@ -207,27 +207,6 @@ button {
   color: #ffffff;
 }
 
-.sidebar-metric {
-  margin-top: auto;
-  padding: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.11);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.045);
-}
-
-.sidebar-metric span {
-  color: #aeb9c3;
-  font-size: 13px;
-}
-
-.sidebar-metric strong {
-  display: block;
-  margin: 8px 0 10px;
-  font-size: 34px;
-  line-height: 1;
-}
-
-.mini-track,
 .wide-track {
   overflow: hidden;
   height: 8px;
@@ -235,7 +214,6 @@ button {
   background: rgba(255, 255, 255, 0.16);
 }
 
-.mini-track span,
 .wide-track span {
   display: block;
   height: 100%;
@@ -581,6 +559,14 @@ tr:last-child td {
   background: var(--red-soft);
   color: var(--red);
 }
+
+.keyword-panel { margin-bottom: 14px; }
+.keyword-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 18px; }
+.keyword-layout textarea { width: 100%; resize: vertical; line-height: 1.6; }
+.keyword-rules { display: grid; gap: 12px; align-content: start; }
+.keyword-result { grid-column: 1 / -1; }
+.keyword-actions { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+@media (max-width: 700px) { .keyword-layout { grid-template-columns: 1fr; } }
 
 .tool-grid {
   display: grid;
@@ -995,7 +981,7 @@ label textarea {
 }
 
 .campaign-editor-table {
-  min-width: 2300px;
+  min-width: 2730px;
 }
 
 .campaign-editor-table th,
@@ -1016,19 +1002,22 @@ label textarea {
 
 .campaign-editor-table th:nth-child(3),
 .campaign-editor-table td:nth-child(3) {
-  width: 210px;
+  width: 220px;
 }
 
 .campaign-editor-table th:nth-child(4),
-.campaign-editor-table td:nth-child(4),
-.campaign-editor-table th:nth-child(6),
-.campaign-editor-table td:nth-child(6) {
-  width: 132px;
+.campaign-editor-table td:nth-child(4) {
+  width: 160px;
 }
 
 .campaign-editor-table th:nth-child(5),
 .campaign-editor-table td:nth-child(5) {
   width: 170px;
+}
+
+.campaign-editor-table th:nth-child(6),
+.campaign-editor-table td:nth-child(6) {
+  width: 132px;
 }
 
 .campaign-editor-table th:nth-child(7),
@@ -1044,15 +1033,18 @@ label textarea {
 }
 
 .campaign-editor-table th:nth-child(10),
-.campaign-editor-table td:nth-child(10),
-.campaign-editor-table th:nth-child(12),
-.campaign-editor-table td:nth-child(12) {
-  width: 220px;
+.campaign-editor-table td:nth-child(10) {
+  width: 260px;
 }
 
 .campaign-editor-table th:nth-child(11),
 .campaign-editor-table td:nth-child(11) {
   width: 540px;
+}
+
+.campaign-editor-table th:nth-child(12),
+.campaign-editor-table td:nth-child(12) {
+  width: 260px;
 }
 
 .campaign-editor-table input,
@@ -1619,10 +1611,6 @@ label textarea {
 
   .nav-item {
     justify-content: center;
-  }
-
-  .sidebar-metric {
-    display: none;
   }
 
   .workspace {
