@@ -169,6 +169,24 @@ const asinTargetOptions = [
   { value: "asin-expanded", label: "已扩展", expressionPrefix: "asin-expanded", factor: 0.86 }
 ];
 
+const placementBidOptions = [
+  { field: "placementTop", value: "placement top", label: "搜索结果顶部（首页）" },
+  { field: "placementRest", value: "placement rest of search", label: "搜索结果其余位置" },
+  { field: "placementProduct", value: "placement product page", label: "商品页面" }
+];
+
+function placementBidPercent(campaign, field) {
+  const value = campaign[field];
+  return value == null || String(value).trim() === "" ? 0 : Number(value);
+}
+
+function placementBidsValid(campaign) {
+  return placementBidOptions.every(({ field }) => {
+    const value = placementBidPercent(campaign, field);
+    return Number.isInteger(value) && value >= 0 && value <= 900;
+  });
+}
+
 const campaignTypeOptions = [
   { value: "keyword", label: "SP关键词投放", product: "Sponsored Products" },
   { value: "asin", label: "SP商品投放", product: "Sponsored Products" },
@@ -1811,14 +1829,14 @@ function buildRowsForCampaign(campaign, index, settings) {
       "Brand Name": campaign.brandName || "",
       "Landing Page": campaign.landingPage || ""
     }),
-    ...["placement top", "placement rest of search", "placement product page"].map((placement) =>
+    ...placementBidOptions.map(({ value: placement, field }) =>
       createCampaignRow(campaign, {
         Entity: "Bidding adjustment",
         "Campaign Id": campaignName,
         State: "",
         "Bidding Strategy": biddingStrategy,
         Placement: placement,
-        Percentage: 0
+        Percentage: placementBidPercent(campaign, field)
       })
     ),
     createCampaignRow(campaign, {
@@ -2288,6 +2306,14 @@ function renderBulkCampaignTable() {
             <select data-field="biddingStrategy" aria-label="竞价方案">
               ${optionTags(biddingStrategyOptions, normalizeBiddingStrategy(campaign.biddingStrategy))}
             </select>
+            <div class="placement-bid-editor">
+              ${placementBidOptions.map(({ field, label }) => `
+                <label>${label}
+                  <span class="placement-bid-input"><input data-field="${field}" type="number" min="0" max="900" step="1" value="${escapeHtml(campaign[field] ?? 0)}" aria-label="${label}竞价调整百分比" /><span>%</span></span>
+                </label>
+              `).join("")}
+              <span class="input-hint">提高 0–900%，留空按 0%。例如 50% 表示基础竞价 × 1.5；动态竞价另行生效。</span>
+            </div>
           </td>
           <td>
             <input data-field="budget" type="number" min="1" step="1" value="${escapeHtml(campaign.budget)}" />
@@ -2473,6 +2499,11 @@ function getBulkValidation(rows = bulkRows) {
   const campaignsHaveTargets = activeCampaigns.every(campaignHasTargets);
   const checks = [
     {
+      ok: activeCampaigns.every(placementBidsValid),
+      title: "广告位竞价调整",
+      body: "每个广告位请输入 0–900 的整数百分比；留空按 0%，不接受负数或小数。"
+    },
+    {
       ok: !portfolioId || (/^\d{5,}$/.test(portfolioId) && !isPlaceholderValue(portfolioId)),
       title: "Portfolio ID（选填）",
       body: "错误报告显示默认假 ID 会触发 EntityID does not exist；没有真实广告组合 ID 时请留空。"
@@ -2541,7 +2572,9 @@ function renderBulkAds() {
   byId("bulkPreviewBody").innerHTML = bulkRows
     .slice(0, bulkPreviewLimit)
     .map((row) => {
-      const target = row["Keyword Text"]
+      const target = row.Entity === "Bidding adjustment"
+        ? `${placementBidOptions.find((option) => option.value === row.Placement)?.label || row.Placement} · +${row.Percentage}%`
+        : row["Keyword Text"]
         ? `${row["Keyword Text"]} · ${row["Match Type"] || "exact"}`
         : row["Product Targeting Expression"]
           ? productTargetPreview(row["Product Targeting Expression"])
@@ -2589,6 +2622,10 @@ function downloadBulkWorkbook() {
 }
 
 async function copyBulkCsv() {
+  if (!bulkCampaigns.filter((campaign) => campaign.enabled && !isVideoCampaign(campaign)).every(placementBidsValid)) {
+    window.alert("请先修正广告位竞价调整：请输入 0–900 的整数百分比。");
+    return;
+  }
   const csv = bulkRowsToCsv();
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(csv);
