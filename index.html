@@ -594,6 +594,17 @@
 
             <div class="prompt-toolbar">
               <div class="prompt-tabs" id="promptCategoryTabs"></div>
+              <details class="prompt-category-manager">
+                <summary>管理分类</summary>
+                <form class="prompt-category-add" id="promptCategoryForm">
+                  <input id="promptCategoryNameInput" type="text" maxlength="24" placeholder="输入新分类名称" autocomplete="off" />
+                  <button class="icon-text-button" type="submit">
+                    <i data-lucide="plus" aria-hidden="true"></i>
+                    <span>新增</span>
+                  </button>
+                </form>
+                <div class="prompt-category-list" id="promptCategoryList"></div>
+              </details>
               <label class="prompt-search">
                 搜索
                 <input id="promptSearchInput" type="search" placeholder="标题、标签、内容" autocomplete="off" />
@@ -677,7 +688,7 @@
       </main>
     </div>
 
-    <script src="app.js?v=20261110-remove-snapshot"></script>
+    <script src="app.js?v=20261110-custom-prompt-categories"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.refreshIcons && window.refreshIcons()"></script>
   </body>
 </html>

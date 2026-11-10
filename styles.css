@@ -1492,6 +1492,21 @@ label textarea {
   font-weight: 800;
 }
 
+.prompt-category-manager { position: relative; }
+.prompt-category-manager summary { cursor: pointer; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.prompt-category-manager[open] {
+  width: min(440px, 100%);
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+.prompt-category-add, .prompt-category-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.prompt-category-add { grid-template-columns: minmax(0, 1fr) auto; margin: 10px 0; }
+.prompt-category-list { display: grid; gap: 8px; }
+.prompt-category-row input, .prompt-category-add input { min-width: 0; margin: 0; }
+.prompt-category-row .icon-button { width: 38px; min-height: 38px; }
+
 .prompt-card p {
   margin: 0;
   color: var(--muted);

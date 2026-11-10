@@ -361,6 +361,7 @@ function readStoredAccountSnapshot() {
     bulkCampaigns: readBulkCampaigns(),
     bulkSettings: readBulkSettings(),
     prompts: readPromptLibrary(),
+    promptCategories: readPromptCategories(),
     tasks: readTasks()
   };
 }
@@ -377,6 +378,7 @@ function currentAccountSnapshot(updatedAt = readAccountUpdatedAt() || new Date()
     bulkCampaigns,
     bulkSettings: currentBulkSettingsSnapshot(),
     prompts: promptLibrary,
+    promptCategories,
     tasks
   };
 }
@@ -389,6 +391,7 @@ function applyAccountSnapshot(snapshot) {
     writeJsonStorage(accountStorageKey("bulkSettings"), snapshot.bulkSettings);
   }
   if (Array.isArray(snapshot.prompts)) writeJsonStorage(accountStorageKey("prompts"), snapshot.prompts);
+  if (Array.isArray(snapshot.promptCategories)) writeJsonStorage(accountStorageKey("promptCategories"), snapshot.promptCategories);
   if (Array.isArray(snapshot.tasks)) writeJsonStorage(accountStorageKey("tasks"), snapshot.tasks);
   writeAccountUpdatedAt(snapshot.updatedAt || new Date().toISOString());
   return true;
@@ -2750,11 +2753,27 @@ async function copyBulkCsv() {
   textarea.remove();
 }
 
-const promptCategories = [
+const defaultPromptCategories = [
   { value: "ads", label: "广告优化" },
   { value: "keywords", label: "关键词分类" },
   { value: "other", label: "其他" }
 ];
+
+function readPromptCategories() {
+  const stored = readJsonStorage(accountStorageKey("promptCategories"), () => defaultPromptCategories);
+  if (!Array.isArray(stored) || !stored.length) return defaultPromptCategories.map((category) => ({ ...category }));
+  return stored
+    .filter((category) => category && String(category.value || "").trim() && String(category.label || "").trim())
+    .map((category) => ({ value: String(category.value).trim(), label: String(category.label).trim().slice(0, 24) }));
+}
+
+let promptCategories = readPromptCategories();
+
+function savePromptCategories() {
+  if (!currentAccountPhone) return;
+  localStorage.setItem(accountStorageKey("promptCategories"), JSON.stringify(promptCategories));
+  markAccountDataChanged();
+}
 
 let promptCategoryFilter = "all";
 let editingPromptId = "";
@@ -2799,7 +2818,7 @@ function promptFormValue(id) {
 function clearPromptForm() {
   editingPromptId = "";
   byId("promptTitleInput").value = "";
-  byId("promptCategoryInput").value = "ads";
+  byId("promptCategoryInput").value = promptCategories[0]?.value || "";
   byId("promptTagsInput").value = "";
   byId("promptContentInput").value = "";
   byId("promptNoteInput").value = "";
@@ -2808,7 +2827,7 @@ function clearPromptForm() {
 
 function renderPromptCategoryOptions() {
   byId("promptCategoryInput").innerHTML = promptCategories
-    .map((category) => `<option value="${category.value}">${category.label}</option>`)
+    .map((category) => `<option value="${escapeHtml(category.value)}">${escapeHtml(category.label)}</option>`)
     .join("");
 }
 
@@ -2817,16 +2836,62 @@ function renderPromptTabs() {
   byId("promptCategoryTabs").innerHTML = categories
     .map(
       (category) => `
-        <button class="prompt-tab ${promptCategoryFilter === category.value ? "is-selected" : ""}" type="button" data-prompt-category="${category.value}">
-          ${category.label}
+        <button class="prompt-tab ${promptCategoryFilter === category.value ? "is-selected" : ""}" type="button" data-prompt-category="${escapeHtml(category.value)}">
+          ${escapeHtml(category.label)}
         </button>
       `
     )
     .join("");
 }
 
+function renderPromptCategoryManager() {
+  byId("promptCategoryList").innerHTML = promptCategories
+    .map((category) => `
+      <div class="prompt-category-row" data-category-id="${escapeHtml(category.value)}">
+        <input type="text" maxlength="24" value="${escapeHtml(category.label)}" aria-label="分类名称" data-category-name />
+        <button class="icon-button" type="button" data-category-action="save" title="保存分类名称"><i data-lucide="save" aria-hidden="true"></i></button>
+        <button class="icon-button" type="button" data-category-action="delete" title="删除分类"><i data-lucide="trash-2" aria-hidden="true"></i></button>
+      </div>`)
+    .join("");
+  refreshIcons();
+}
+
+function addPromptCategory(label) {
+  const cleanLabel = String(label || "").trim().slice(0, 24);
+  if (!cleanLabel) return setPromptStatus("请输入分类名称");
+  if (promptCategories.some((category) => category.label.toLowerCase() === cleanLabel.toLowerCase())) return setPromptStatus("分类已存在");
+  promptCategories.push({ value: createId("prompt-category"), label: cleanLabel });
+  savePromptCategories();
+  renderPromptLibrary();
+  setPromptStatus("分类已新增");
+}
+
+function renamePromptCategory(value, label) {
+  const cleanLabel = String(label || "").trim().slice(0, 24);
+  if (!cleanLabel) return setPromptStatus("分类名称不能为空");
+  if (promptCategories.some((category) => category.value !== value && category.label.toLowerCase() === cleanLabel.toLowerCase())) return setPromptStatus("分类已存在");
+  const category = promptCategories.find((item) => item.value === value);
+  if (!category) return;
+  category.label = cleanLabel;
+  savePromptCategories();
+  renderPromptLibrary();
+  setPromptStatus("分类已更新");
+}
+
+function deletePromptCategory(value) {
+  if (promptCategories.length <= 1) return setPromptStatus("至少保留一个分类");
+  const fallback = promptCategories.find((category) => category.value !== value);
+  promptLibrary = promptLibrary.map((prompt) => prompt.category === value ? { ...prompt, category: fallback.value } : prompt);
+  promptCategories = promptCategories.filter((category) => category.value !== value);
+  if (promptCategoryFilter === value) promptCategoryFilter = "all";
+  savePromptCategories();
+  savePromptLibrary();
+  renderPromptLibrary();
+  setPromptStatus("分类已删除，提示词已转移");
+}
+
 function promptSearchText(prompt) {
-  return [prompt.title, prompt.category, prompt.tags, prompt.content, prompt.note].join(" ").toLowerCase();
+  return [prompt.title, promptCategoryLabel(prompt.category), prompt.tags, prompt.content, prompt.note].join(" ").toLowerCase();
 }
 
 function filteredPrompts() {
@@ -2884,6 +2949,7 @@ function renderPromptList() {
 function renderPromptLibrary() {
   renderPromptCategoryOptions();
   renderPromptTabs();
+  renderPromptCategoryManager();
   renderPromptList();
 }
 
@@ -2892,7 +2958,7 @@ function fillPromptForm(id) {
   if (!prompt) return;
   editingPromptId = prompt.id;
   byId("promptTitleInput").value = prompt.title || "";
-  byId("promptCategoryInput").value = prompt.category || "other";
+  byId("promptCategoryInput").value = promptCategories.some((category) => category.value === prompt.category) ? prompt.category : promptCategories[0]?.value || "";
   byId("promptTagsInput").value = prompt.tags || "";
   byId("promptContentInput").value = prompt.content || "";
   byId("promptNoteInput").value = prompt.note || "";
@@ -2975,6 +3041,7 @@ function exportPromptLibrary() {
   const payload = JSON.stringify(
     {
       exportedAt: new Date().toISOString(),
+      categories: promptCategories,
       prompts: promptLibrary
     },
     null,
@@ -2996,6 +3063,13 @@ async function importPromptLibrary(file) {
   const parsed = JSON.parse(text);
   const imported = Array.isArray(parsed) ? parsed : parsed.prompts;
   if (!Array.isArray(imported)) throw new Error("Invalid prompt file");
+  if (Array.isArray(parsed.categories)) {
+    const existingCategoryIds = new Set(promptCategories.map((category) => category.value));
+    parsed.categories.forEach((category) => {
+      if (category?.value && category?.label && !existingCategoryIds.has(category.value)) promptCategories.push({ value: String(category.value), label: String(category.label).slice(0, 24) });
+    });
+    savePromptCategories();
+  }
   const normalized = imported
     .filter((prompt) => prompt && (prompt.title || prompt.content))
     .map((prompt) => ({
@@ -3229,6 +3303,7 @@ function loadAccountData() {
   state.skus = readAccountSkus();
   bulkCampaigns = readBulkCampaigns();
   promptLibrary = readPromptLibrary();
+  promptCategories = readPromptCategories();
   tasks = readTasks();
   promptCategoryFilter = "all";
   editingPromptId = "";
@@ -3285,6 +3360,7 @@ function logoutAccount() {
   cloudSyncEnabled = true;
   bulkCampaigns = defaultBulkCampaigns();
   promptLibrary = [];
+  promptCategories = defaultPromptCategories.map((category) => ({ ...category }));
   tasks = defaultTasks();
   byId("phoneInput").value = "";
   byId("passwordInput").value = "";
@@ -3584,6 +3660,19 @@ function bindEvents() {
     promptCategoryFilter = button.dataset.promptCategory;
     renderPromptTabs();
     renderPromptList();
+  });
+  byId("promptCategoryForm").addEventListener("submit", (event) => {
+    event.preventDefault();
+    addPromptCategory(byId("promptCategoryNameInput").value);
+    byId("promptCategoryNameInput").value = "";
+  });
+  byId("promptCategoryList").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-category-action]");
+    if (!button) return;
+    const row = button.closest("[data-category-id]");
+    if (!row) return;
+    if (button.dataset.categoryAction === "save") renamePromptCategory(row.dataset.categoryId, row.querySelector("[data-category-name]").value);
+    if (button.dataset.categoryAction === "delete") deletePromptCategory(row.dataset.categoryId);
   });
   byId("promptList").addEventListener("click", (event) => {
     const button = event.target.closest("[data-prompt-action]");
