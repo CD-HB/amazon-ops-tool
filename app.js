@@ -3638,13 +3638,6 @@ function bindEvents() {
     renderTasks();
   });
 
-  byId("importButton").addEventListener("click", () => byId("csvInput").click());
-  byId("csvInput").addEventListener("change", (event) => {
-    const [file] = event.target.files;
-    if (file) importCsv(file);
-    event.target.value = "";
-  });
-  byId("exportButton").addEventListener("click", exportSnapshot);
 }
 
 bindEvents();
