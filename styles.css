@@ -844,15 +844,15 @@ label textarea {
 
 .bulk-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.45fr);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
   align-items: start;
 }
 
 .bulk-builder {
   min-width: 0;
   display: grid;
-  gap: 14px;
+  gap: 20px;
 }
 
 .bulk-global-form {
@@ -872,6 +872,47 @@ label textarea {
   padding: 0 10px;
   border: 1px solid var(--line);
   background: #ffffff;
+}
+
+.single-keyword-builder { padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: #f7fbfa; }
+.single-keyword-builder h3 { margin: 0 0 12px; }
+.single-keyword-builder .form-grid { margin-top: 14px; }
+.single-keyword-builder textarea { width: 100%; resize: vertical; }
+.single-keyword-builder select { width: 100%; }
+.single-keyword-builder [role="status"] { font-size: 13px; line-height: 1.6; }
+.single-keyword-placements {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin: 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.single-keyword-placements legend { padding: 0 6px; font-weight: 700; color: var(--ink); }
+.single-keyword-placements label { min-width: 0; }
+.single-keyword-match-options {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 10px 16px;
+  min-width: 0;
+  margin: 0;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.single-keyword-match-options legend { padding: 0 5px; font-weight: 700; color: var(--ink); }
+.single-keyword-match-options label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
+.single-keyword-match-options input { width: auto; margin: 0; }
+.single-keyword-bid-help {
+  grid-column: span 2;
+  align-self: end;
+  margin: 0 0 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #edf7f4;
 }
 
 .bulk-campaign-head {
@@ -1054,6 +1095,13 @@ label textarea {
 
 .campaign-editor-table input,
 .campaign-editor-table select,
+.campaign-editor-table select[data-field="campaignState"] {
+  display: block;
+  width: 100%;
+  min-width: 200px;
+  margin-top: 8px;
+}
+
 .campaign-editor-table textarea {
   margin: 0;
   border-color: #d9e0e4;
@@ -1263,9 +1311,17 @@ label textarea {
 
 .campaign-enabled {
   width: 18px;
+  min-width: 18px;
   height: 18px;
+  display: inline-block;
   margin-top: 10px;
   accent-color: var(--green);
+}
+
+#bulkAds .campaign-editor-table input.campaign-enabled {
+  width: 18px;
+  min-width: 18px;
+  margin: 10px auto 0;
 }
 
 .row-actions {
@@ -1693,3 +1749,46 @@ label textarea {
     font-size: 25px;
   }
 }
+
+/* Compact bulk campaign workspace */
+#bulkAds .single-keyword-builder .form-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+#bulkAds .single-keyword-builder .single-keyword-wide-field { grid-column: span 2; }
+#bulkAds .single-keyword-builder .form-grid > label { min-width: 0; }
+#bulkAds .bulk-summary { border-top: 1px solid var(--line); padding-top: 16px; }
+#bulkAds .compact-results { grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+#bulkAds .bulk-checklist { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#bulkAds .bulk-check { min-height: 0; padding: 10px; }
+#bulkAds .campaign-table-wrap { max-height: 620px; overflow: auto; }
+#bulkAds .campaign-editor-table th { position: sticky; top: 0; z-index: 2; background: #f4f7f9; }
+#bulkAds .campaign-editor-table td:nth-child(3) { min-width: 250px; }
+#bulkAds .campaign-editor-table select[data-field="campaignState"] { width: 100%; min-width: 200px; }
+@media (max-width: 1050px) {
+  #bulkAds .bulk-global-form, #bulkAds .single-keyword-builder .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #bulkAds .single-keyword-builder .single-keyword-wide-field { grid-column: auto; }
+  #bulkAds .bulk-checklist { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .single-keyword-placements { grid-template-columns: minmax(0, 1fr); }
+  #bulkAds .bulk-global-form, #bulkAds .single-keyword-builder .form-grid, #bulkAds .bulk-checklist { grid-template-columns: minmax(0, 1fr); }
+  #bulkAds .single-keyword-builder { padding: 14px; }
+  #bulkAds .bulk-campaign-head { flex-wrap: wrap; }
+  #bulkAds .compact-results strong { font-size: 18px; overflow-wrap: anywhere; }
+}
+
+/* Keep short numeric fields compact, even with the shared input minimum. */
+#bulkAds .campaign-editor-table { table-layout: fixed; width: 2310px; min-width: 2310px; }
+#bulkAds .campaign-editor-table th:nth-child(6), #bulkAds .campaign-editor-table td:nth-child(6) { width: 90px; }
+#bulkAds .campaign-editor-table th:nth-child(7), #bulkAds .campaign-editor-table td:nth-child(7) { width: 190px; }
+#bulkAds .campaign-editor-table th:nth-child(8), #bulkAds .campaign-editor-table td:nth-child(8),
+#bulkAds .campaign-editor-table th:nth-child(9), #bulkAds .campaign-editor-table td:nth-child(9) { width: 84px; }
+#bulkAds .campaign-editor-table input[data-field="budget"],
+#bulkAds .campaign-editor-table input[data-field="defaultBid"],
+#bulkAds .campaign-editor-table input[data-field="adGroupSuffix"] { width: 64px; min-width: 0; padding: 10px 6px; }
+#bulkAds .campaign-editor-table input[data-field="budget"],
+#bulkAds .campaign-editor-table input[data-field="defaultBid"] { appearance: textfield; -moz-appearance: textfield; }
+#bulkAds .campaign-editor-table input[data-field="budget"]::-webkit-inner-spin-button,
+#bulkAds .campaign-editor-table input[data-field="defaultBid"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+#bulkAds .placement-bid-editor { min-width: 0; }
+#bulkAds .placement-bid-editor label, #bulkAds .placement-bid-editor .input-hint { white-space: normal; }
+#bulkAds .placement-bid-input input { width: 72px; min-width: 0; padding: 10px 6px; }
+#bulkAds .campaign-editor-table select[data-field="biddingStrategy"] { min-width: 0; width: 100%; }

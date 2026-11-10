@@ -235,7 +235,7 @@ const bulkColumns = [
   "Video Ad Format"
 ];
 
-const bulkPreviewLimit = 9;
+
 
 let bulkRows = [];
 
@@ -269,6 +269,7 @@ function defaultBulkCampaigns() {
 }
 
 let bulkCampaigns = defaultBulkCampaigns();
+let clearedBulkCampaigns = null;
 
 function byId(id) {
   return document.getElementById(id);
@@ -1319,6 +1320,7 @@ function isPlaceholderValue(value) {
 
 function parseBulkProducts(value) {
   return splitBulkLines(value).map((line) => {
+    if (/^SKU:/i.test(line)) return { asin: "", sku: line.slice(4).trim() };
     const [first = "", second = ""] = line.split(/[,，\t]+/).map((part) => part.trim());
     const firstIsAsin = isAsin(first);
     return {
@@ -1599,6 +1601,7 @@ function saveAccountSkus() {
 
 function readBulkCampaigns() {
   const campaigns = readJsonStorage(accountStorageKey("bulkCampaigns"), defaultBulkCampaigns);
+  if (Array.isArray(campaigns) && campaigns.length === 0) return [];
   const allowedTypes = new Set(campaignTypeOptions.map((option) => option.value));
   const restored = Array.isArray(campaigns) && campaigns.length
     ? campaigns.map((campaign) => ({
@@ -1715,6 +1718,126 @@ function createBulkCampaign(overrides = {}) {
   };
 }
 
+function parseSingleKeywordInput(text) {
+  const lines = String(text).split(/\r?\n/).map((line) => line.trim().replace(/\s+/g, " ")).filter(Boolean);
+  const seen = new Set();
+  const keywords = lines.filter((keyword) => {
+    const key = keyword.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return { keywords, duplicates: lines.length - keywords.length };
+}
+
+function parseSingleKeywordBidEntries(text, bidMode, batchBid, individualBidsText = "") {
+  const parsed = parseSingleKeywordInput(text);
+  if (bidMode !== "individual") {
+    if (parsed.keywords.some((keyword) => /[,，]/.test(keyword))) throw new Error("统一竞价模式下请每行只填一个关键词，不要附带竞价。");
+    if (!Number.isFinite(batchBid) || batchBid < 0.02) throw new Error("统一关键词竞价不能低于 0.02。");
+    return { entries: parsed.keywords.map((keyword) => ({ keyword, bid: batchBid })), duplicates: parsed.duplicates };
+  }
+  const rows = String(text).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const bidRows = String(individualBidsText).split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  if (rows.length !== bidRows.length) throw new Error(`关键词有 ${rows.length} 行，竞价有 ${bidRows.length} 行，请确保两个框逐行对应。`);
+  const entries = [];
+  const seen = new Set();
+  let duplicates = 0;
+  rows.forEach((row, index) => {
+    const keyword = row.replace(/\s+/g, " ");
+    const bid = Number(bidRows[index]);
+    if (!keyword || !Number.isFinite(bid) || bid < 0.02) throw new Error(`第 ${index + 1} 行竞价不能低于 0.02。`);
+    const key = keyword.toLowerCase();
+    if (seen.has(key)) { duplicates += 1; return; }
+    seen.add(key);
+    entries.push({ keyword, bid });
+  });
+  return { entries, duplicates };
+}
+
+function createSingleKeywordCampaigns(text, settings, existingCampaigns = bulkCampaigns) {
+  const { entries } = parseSingleKeywordBidEntries(text, settings.bidMode || "batch", settings.bid, settings.individualBids);
+  if (!entries.length) throw new Error("请先粘贴关键词，每行一个。");
+  if (!Number.isFinite(settings.budget) || settings.budget < 1) throw new Error("请填写有效的日预算（至少 1）。");
+  const matches = Array.isArray(settings.matches) ? settings.matches : [settings.match];
+  if (!matches.length || matches.some((match) => !["exact", "phrase", "broad"].includes(match))) throw new Error("请至少选择一种有效的匹配方式。");
+  const placementSettings = {
+    placementTop: settings.placementTop ?? 0,
+    placementRest: settings.placementRest ?? 0,
+    placementProduct: settings.placementProduct ?? 0
+  };
+  if (!placementBidsValid(placementSettings)) throw new Error("广告位调整必须是 0–900 之间的整数百分比。");
+  const products = parseBulkProducts(settings.products);
+  if (!products.length || !products.every(productIsUploadable)) throw new Error("请填写真实的推广 SKU / ASIN，所有活动共用这些产品。");
+  const usedNames = new Set(existingCampaigns.map((campaign) => String(campaign.name).toLowerCase()));
+  return entries.flatMap(({ keyword, bid }, keywordIndex) => matches.map((match, matchIndex) => {
+    const nameSku = settings.prefix.trim() || products[0].sku || products[0].asin;
+    const baseName = `${nameSku}-${match}-${keyword}`.slice(0, 120);
+    let name = baseName;
+    let suffix = 2;
+    while (usedNames.has(name.toLowerCase())) name = `${baseName}-${suffix++}`;
+    usedNames.add(name.toLowerCase());
+    return createBulkCampaign({
+      name, type: "keyword", keywords: keyword, keywordBids: "", targets: "",
+      matchType: match, matchTypes: [match],
+      budget: settings.budget, defaultBid: bid, products: settings.products.trim(),
+      adGroupSuffix: String(existingCampaigns.length + keywordIndex * matches.length + matchIndex + 1),
+      placementTop: placementSettings.placementTop,
+      placementRest: placementSettings.placementRest,
+      placementProduct: placementSettings.placementProduct
+    });
+  }));
+}
+
+function bindSingleKeywordBuilder() {
+  const form = byId("singleKeywordForm");
+  form.addEventListener("input", () => {
+    const bidMode = byId("singleKeywordBidMode").value;
+    const individual = bidMode === "individual";
+    byId("singleKeywordBidField").hidden = individual;
+    byId("singleKeywordIndividualBidsField").hidden = !individual;
+    byId("singleKeywordIndividualBids").required = individual;
+    byId("singleKeywordBid").required = !individual;
+    let keywordCount = 0;
+    let duplicates = 0;
+    try {
+      const parsed = parseSingleKeywordBidEntries(byId("singleKeywordInput").value, bidMode, numberValue("singleKeywordBid"), byId("singleKeywordIndividualBids").value);
+      keywordCount = parsed.entries.length;
+      duplicates = parsed.duplicates;
+    } catch {
+      keywordCount = String(byId("singleKeywordInput").value).split(/\r?\n/).filter((line) => line.trim()).length;
+    }
+    const budget = numberValue("singleKeywordBudget");
+    const matchCount = form.querySelectorAll('input[name="singleKeywordMatch"]:checked').length;
+    const activityCount = keywordCount * matchCount;
+    byId("singleKeywordSummary").textContent = `预计生成 ${activityCount} 个活动 · ${keywordCount} 个关键词 × ${matchCount} 种匹配方式 · 合并 ${duplicates} 条重复关键词 · 日预算合计 ${(activityCount * budget).toFixed(2)}（站点本币）`;
+  });
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    try {
+      const campaigns = createSingleKeywordCampaigns(byId("singleKeywordInput").value, {
+        products: byId("singleKeywordProducts").value, prefix: byId("singleKeywordPrefix").value,
+        budget: numberValue("singleKeywordBudget"), bid: numberValue("singleKeywordBid"),
+        bidMode: byId("singleKeywordBidMode").value,
+        individualBids: byId("singleKeywordIndividualBids").value,
+        matches: [...form.querySelectorAll('input[name="singleKeywordMatch"]:checked')].map((input) => input.value),
+        marketplace: byId("bulkMarketplace").value,
+        placementTop: numberValue("singleKeywordPlacementTop"),
+        placementRest: numberValue("singleKeywordPlacementRest"),
+        placementProduct: numberValue("singleKeywordPlacementProduct")
+      });
+      bulkCampaigns.push(...campaigns);
+      saveBulkCampaigns();
+      renderBulkCampaignTable();
+      renderBulkAds();
+      byId("singleKeywordInput").value = "";
+      byId("singleKeywordSummary").textContent = `已添加 ${campaigns.length} 个单关键词活动到下方表格，原有活动保留。请检查后使用上方“下载上传表格”导出。`;
+    } catch (error) {
+      byId("singleKeywordSummary").textContent = error.message;
+    }
+  });
+}
+
 function buildProductAdRows(campaign, products, campaignName, adGroupName) {
   return products.map((product) =>
     createCampaignRow(campaign, {
@@ -1814,6 +1937,7 @@ function buildRowsForCampaign(campaign, index, settings) {
   return [
     createCampaignRow(campaign, {
       Entity: "Campaign",
+      State: campaign.campaignState === "paused" ? "paused" : "enabled",
       "Campaign Id": campaignName,
       "Portfolio Id": settings.portfolioId,
       "Campaign Name": campaignName,
@@ -2117,7 +2241,7 @@ function bulkRowsToXlsxBlob(rows = bulkRows) {
       name: "xl/workbook.xml",
       content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
-  <sheets><sheet name="Bulk Ads" sheetId="1" r:id="rId1"/></sheets>
+  <sheets><sheet name="Sponsored Products Campaigns" sheetId="1" r:id="rId1"/></sheets>
 </workbook>`
     },
     {
@@ -2265,6 +2389,8 @@ function renderNegativeKeywordEditor(campaign) {
 }
 
 function renderBulkCampaignTable() {
+  byId("clearBulkCampaignsButton").disabled = bulkCampaigns.length === 0;
+  byId("undoClearBulkCampaignsButton").disabled = !clearedBulkCampaigns;
   const body = byId("bulkCampaignTableBody");
   body.innerHTML = bulkCampaigns
     .filter((campaign) => !isVideoCampaign(campaign))
@@ -2272,7 +2398,7 @@ function renderBulkCampaignTable() {
       (campaign, index) => `
         <tr data-campaign-id="${campaign.id}">
           <td>
-            <input class="campaign-enabled" data-field="enabled" type="checkbox" ${campaign.enabled ? "checked" : ""} aria-label="启用第 ${index + 1} 个广告活动" />
+            <input class="campaign-enabled" data-field="enabled" type="checkbox" ${campaign.enabled ? "checked" : ""} aria-label="生成第 ${index + 1} 个广告活动" />
           </td>
           <td>
             <div class="row-actions">
@@ -2286,6 +2412,10 @@ function renderBulkCampaignTable() {
           </td>
           <td>
             <input data-field="name" type="text" value="${escapeHtml(campaign.name)}" placeholder="SP_品牌_产品" />
+            <select data-field="campaignState" aria-label="广告活动上传状态">
+              <option value="enabled" ${campaign.campaignState !== "paused" ? "selected" : ""}>开启</option>
+              <option value="paused" ${campaign.campaignState === "paused" ? "selected" : ""}>暂停（仍生成）</option>
+            </select>
           </td>
           <td>
             <select data-field="type" aria-label="投放类型">
@@ -2499,6 +2629,11 @@ function getBulkValidation(rows = bulkRows) {
   const campaignsHaveTargets = activeCampaigns.every(campaignHasTargets);
   const checks = [
     {
+      ok: new Set(activeCampaigns.map((c, i) => (c.name.trim() || defaultCampaignNameFor(c, i, byId("bulkMarketplace").value)).toLowerCase())).size === activeCampaigns.length,
+      title: "活动名称唯一",
+      body: "同一文件内的活动名称不能重复，以免子记录关联到错误活动。"
+    },
+    {
       ok: activeCampaigns.every(placementBidsValid),
       title: "广告位竞价调整",
       body: "每个广告位请输入 0–900 的整数百分比；留空按 0%，不接受负数或小数。"
@@ -2524,9 +2659,9 @@ function getBulkValidation(rows = bulkRows) {
       body: "关键词需填写关键词并至少选择一个匹配类型；商品投放需填写真实 10 位 ASIN。"
     },
     {
-      ok: rows.length <= 1000,
+      ok: rows.length <= 50000,
       title: "Bulk Size",
-      body: "当前批量表适合一次创建多个活动；行数过大时建议分批上传。"
+      body: "本工具单文件最多生成 50,000 行；超出时请分批勾选活动导出。"
     }
   ];
 
@@ -2563,38 +2698,13 @@ function renderBulkAds() {
   bulkRows = buildBulkRows();
   const campaignCount = bulkRows.filter((row) => row.Entity === "Campaign").length;
   const budgetTotal = bulkRows
-    .filter((row) => row.Entity === "Campaign")
+    .filter((row) => row.Entity === "Campaign" && row.State === "enabled")
     .reduce((sum, row) => sum + (Number.parseFloat(row["Daily Budget"]) || 0), 0);
 
   byId("bulkRowCount").textContent = bulkRows.length.toLocaleString("zh-CN");
   byId("bulkCampaignCount").textContent = campaignCount.toLocaleString("zh-CN");
-  byId("bulkBudgetTotal").textContent = currency.format(budgetTotal);
-  byId("bulkPreviewBody").innerHTML = bulkRows
-    .slice(0, bulkPreviewLimit)
-    .map((row) => {
-      const target = row.Entity === "Bidding adjustment"
-        ? `${placementBidOptions.find((option) => option.value === row.Placement)?.label || row.Placement} · +${row.Percentage}%`
-        : row["Keyword Text"]
-        ? `${row["Keyword Text"]} · ${row["Match Type"] || "exact"}`
-        : row["Product Targeting Expression"]
-          ? productTargetPreview(row["Product Targeting Expression"])
-          : row["Creative Asset Id"]
-            ? `视频素材 ${row["Creative Asset Id"]}`
-            : row["Targeting Type"] || "—";
-      return `
-        <tr>
-          <td>${row.Product === "Sponsored Products" ? row.Entity : `${row.Product} / ${row.Entity}`}</td>
-          <td>${row["Campaign Name"] || row["Campaign Id"] || "—"}</td>
-          <td>${row["Ad Group Name"] || row["Ad Group Id"] || "—"}</td>
-          <td>${row["Portfolio Id"] || "—"}</td>
-          <td>${target}</td>
-          <td>${row.Bid || row["Ad Group Default Bid"] || "—"}</td>
-          <td>${row["Bidding Strategy"] || "—"}</td>
-          <td>${row.State ? `<span class="status-pill ${row.State === "paused" ? "warn" : "good"}">${row.State}</span>` : "—"}</td>
-        </tr>
-      `;
-    })
-    .join("");
+  const budgetCurrency = { US: "USD", UK: "GBP", DE: "EUR", JP: "JPY" }[byId("bulkMarketplace").value] || "USD";
+  byId("bulkBudgetTotal").textContent = new Intl.NumberFormat("zh-CN", { style: "currency", currency: budgetCurrency }).format(budgetTotal);
   const validation = renderBulkChecklist(bulkRows);
   const downloadButton = byId("downloadBulkButton");
   if (downloadButton) {
@@ -3161,6 +3271,13 @@ async function registerOrLogin(phone, password) {
 }
 
 function logoutAccount() {
+  clearedBulkCampaigns = null;
+  byId("singleKeywordForm").reset();
+  byId("singleKeywordBidField").hidden = false;
+  byId("singleKeywordIndividualBidsField").hidden = true;
+  byId("singleKeywordBid").required = true;
+  byId("singleKeywordIndividualBids").required = false;
+  byId("singleKeywordSummary").textContent = "粘贴关键词后显示预计活动数和日预算合计。";
   byId("negativeKeywordForm").reset();
   resetNegativeKeywordResults("请粘贴关键词并填写产品相关词根。");
   currentAccountPhone = "";
@@ -3289,6 +3406,7 @@ function bindNegativeKeywordEvents() {
 }
 
 function bindEvents() {
+  bindSingleKeywordBuilder();
   bindNegativeKeywordEvents();
   byId("authForm").addEventListener("submit", handleAuthSubmit);
 
@@ -3347,6 +3465,23 @@ function bindEvents() {
   });
   byId("bulkAdsForm").addEventListener("change", () => {
     saveBulkSettings();
+    renderBulkAds();
+  });
+  byId("clearBulkCampaignsButton").addEventListener("click", () => {
+    if (!bulkCampaigns.length) return;
+    clearedBulkCampaigns = JSON.parse(JSON.stringify(bulkCampaigns));
+    bulkCampaigns = [];
+    saveBulkCampaigns();
+    renderBulkCampaignTable();
+    renderBulkAds();
+  });
+  byId("undoClearBulkCampaignsButton").addEventListener("click", () => {
+    if (!clearedBulkCampaigns) return;
+    const existingIds = new Set(bulkCampaigns.map((campaign) => campaign.id));
+    bulkCampaigns = [...clearedBulkCampaigns.filter((campaign) => !existingIds.has(campaign.id)), ...bulkCampaigns];
+    clearedBulkCampaigns = null;
+    saveBulkCampaigns();
+    renderBulkCampaignTable();
     renderBulkAds();
   });
   byId("addBulkCampaignButton").addEventListener("click", () => {
