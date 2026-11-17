@@ -1025,6 +1025,9 @@ label textarea {
 .placement-bid-editor label { display: grid; gap: 5px; font-size: 12px; }
 .placement-bid-input { display: flex; align-items: center; gap: 6px; }
 .placement-bid-input input { width: 100%; min-width: 0; }
+.reach-setting-editor { display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.reach-setting-editor label { display: grid; gap: 5px; font-size: 12px; }
+.reach-setting-editor input, .reach-setting-editor select { width: 100%; min-width: 0; }
 
 .campaign-editor-table {
   min-width: 2730px;

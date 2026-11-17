@@ -1,0 +1,18 @@
+const fs = require('node:fs');
+const vm = require('node:vm');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('app.js', 'utf8');
+const controls = { bulkMarketplace:{value:'US'}, bulkBiddingStrategy:{value:'Fixed bid'} };
+const ctx = vm.createContext({ console, Intl, localStorage:{getItem:()=>null}, window:{}, document:{getElementById:id=>controls[id]} });
+vm.runInContext(source.slice(0, source.lastIndexOf('\nbindEvents();')), ctx);
+const run = code => vm.runInContext(code, ctx);
+run(`var campaign = createBulkCampaign({offAmazonServing:'limit',existingCampaignId:'123456789'});
+var rows = buildRowsForCampaign(campaign,0,{marketplace:'US',startDate:'20261117',portfolioId:'',biddingStrategy:'Fixed bid'});`);
+assert.equal(run('rows.length'),1);
+assert.equal(run('rows[0].Operation'),'Update');
+assert.equal(run('rows[0]["Campaign Id"]'),'123456789');
+assert.equal(run('rows[0]["Off-Amazon ad serving"]'),'Limit reach');
+run(`campaign.offAmazonServing='increase'; rows = buildRowsForCampaign(campaign,0,{marketplace:'US',startDate:'20261117',portfolioId:'',biddingStrategy:'Fixed bid'});`);
+assert.equal(run('rows[0]["Off-Amazon ad serving"]'),'Increase reach');
+assert.equal(run('bulkColumns.includes("Off-Amazon ad serving")'),true);
+console.log('Off-Amazon reach update rows and bulk column: passed');

@@ -175,6 +175,16 @@ const placementBidOptions = [
   { field: "placementProduct", value: "placement product page", label: "商品页面" }
 ];
 
+const offAmazonServingOptions = [
+  { value: "default", label: "新建活动：扩大站外触达（默认）" },
+  { value: "increase", label: "已有活动：扩大站外触达" },
+  { value: "limit", label: "已有活动：仅限亚马逊" }
+];
+
+function isOffAmazonServingUpdate(campaign) {
+  return campaign.offAmazonServing === "increase" || campaign.offAmazonServing === "limit";
+}
+
 function placementBidPercent(campaign, field) {
   const value = campaign[field];
   return value == null || String(value).trim() === "" ? 0 : Number(value);
@@ -224,6 +234,7 @@ const bulkColumns = [
   "Shopper Cohort Percentage",
   "Shopper Cohort Type",
   "Sites",
+  "Off-Amazon ad serving",
   "Campaign Type",
   "Ad Format",
   "Media ID",
@@ -263,7 +274,9 @@ function defaultBulkCampaigns() {
       negativeMatchTypes: ["negative exact"],
       negativeExact: "",
       negativePhrase: "",
-      negatives: ""
+      negatives: "",
+      offAmazonServing: "default",
+      existingCampaignId: ""
     }
   ];
 }
@@ -1614,6 +1627,8 @@ function readBulkCampaigns() {
         brandEntityId: campaign.brandEntityId || "",
         brandName: campaign.brandName || "",
         landingPage: campaign.landingPage || "",
+        offAmazonServing: ["increase", "limit"].includes(campaign.offAmazonServing) ? campaign.offAmazonServing : "default",
+        existingCampaignId: campaign.existingCampaignId || "",
         biddingStrategy: normalizeBiddingStrategy(campaign.biddingStrategy)
       }))
     : defaultBulkCampaigns();
@@ -1711,6 +1726,8 @@ function createBulkCampaign(overrides = {}) {
     brandEntityId: "",
     brandName: "",
     landingPage: "",
+    offAmazonServing: "default",
+    existingCampaignId: "",
     asinTargets: defaultAsinTargets(0.45),
     autoTargets: defaultAutoTargets(0.45),
     negativeMatchTypes: ["negative exact"],
@@ -1927,6 +1944,16 @@ function buildTargetRows(campaign, campaignName, adGroupName, defaultBid) {
 }
 
 function buildRowsForCampaign(campaign, index, settings) {
+  if (isOffAmazonServingUpdate(campaign)) {
+    return [createCampaignRow(campaign, {
+      Entity: "Campaign",
+      Operation: "Update",
+      State: "",
+      "Campaign Id": String(campaign.existingCampaignId || "").trim(),
+      "Portfolio Id": settings.portfolioId,
+      "Off-Amazon ad serving": campaign.offAmazonServing === "limit" ? "Limit reach" : "Increase reach"
+    })];
+  }
   const campaignName = campaign.name.trim() || defaultCampaignNameFor(campaign, index, settings.marketplace);
   const adGroupName = adGroupNameFor(campaign, campaignName);
   const budget = readCampaignNumber(campaign, "budget", 10);
@@ -2391,6 +2418,20 @@ function renderNegativeKeywordEditor(campaign) {
   `;
 }
 
+function renderOffAmazonServingEditor(campaign) {
+  const updateMode = isOffAmazonServingUpdate(campaign);
+  return `
+    <div class="reach-setting-editor">
+      <label>站内及站外触达范围
+        <select data-field="offAmazonServing" aria-label="站内及站外触达范围">
+          ${optionTags(offAmazonServingOptions, campaign.offAmazonServing || "default")}
+        </select>
+      </label>
+      ${updateMode ? `<label>现有 Campaign ID<input data-field="existingCampaignId" type="text" inputmode="numeric" value="${escapeHtml(campaign.existingCampaignId || "")}" placeholder="亚马逊活动数字 ID" /></label>` : ""}
+      <span class="input-hint">亚马逊批量表仅支持更新已有活动；新建活动默认扩大站外触达。</span>
+    </div>`;
+}
+
 function renderBulkCampaignTable() {
   byId("clearBulkCampaignsButton").disabled = bulkCampaigns.length === 0;
   byId("undoClearBulkCampaignsButton").disabled = !clearedBulkCampaigns;
@@ -2447,6 +2488,7 @@ function renderBulkCampaignTable() {
               `).join("")}
               <span class="input-hint">提高 0–900%，留空按 0%。例如 50% 表示基础竞价 × 1.5；动态竞价另行生效。</span>
             </div>
+            ${renderOffAmazonServingEditor(campaign)}
           </td>
           <td>
             <input data-field="budget" type="number" min="1" step="1" value="${escapeHtml(campaign.budget)}" />
@@ -2508,6 +2550,10 @@ function updateBulkCampaignFromControl(control) {
       campaign.brandName ??= "";
       campaign.landingPage ??= "";
     }
+  } else if (field === "offAmazonServing") {
+    campaign[field] = control.value;
+    if (control.value === "default") campaign.existingCampaignId = "";
+    renderBulkCampaignTable();
   } else {
     campaign[field] = control.value;
   }
@@ -2625,21 +2671,28 @@ function campaignHasVideoCreative(campaign) {
 function getBulkValidation(rows = bulkRows) {
   const portfolioId = byId("bulkPortfolioId").value.trim();
   const activeCampaigns = bulkCampaigns.filter((campaign) => campaign.enabled && !isVideoCampaign(campaign));
-  const productsByCampaign = activeCampaigns.map((campaign) => parseBulkProducts(campaign.products));
-  const campaignsHaveNames = activeCampaigns.every((campaign, index) => (campaign.name.trim() || defaultCampaignNameFor(campaign, index, byId("bulkMarketplace").value)).length);
-  const campaignsHaveNumbers = activeCampaigns.every((campaign) => readCampaignNumber(campaign, "budget", 0) > 0 && readCampaignNumber(campaign, "defaultBid", 0) > 0);
+  const creationCampaigns = activeCampaigns.filter((campaign) => !isOffAmazonServingUpdate(campaign));
+  const reachUpdateCampaigns = activeCampaigns.filter(isOffAmazonServingUpdate);
+  const productsByCampaign = creationCampaigns.map((campaign) => parseBulkProducts(campaign.products));
+  const campaignsHaveNames = creationCampaigns.every((campaign, index) => (campaign.name.trim() || defaultCampaignNameFor(campaign, index, byId("bulkMarketplace").value)).length);
+  const campaignsHaveNumbers = creationCampaigns.every((campaign) => readCampaignNumber(campaign, "budget", 0) > 0 && readCampaignNumber(campaign, "defaultBid", 0) > 0);
   const campaignsHaveProducts = productsByCampaign.every((products) => products.length > 0 && products.every(productIsUploadable));
-  const campaignsHaveTargets = activeCampaigns.every(campaignHasTargets);
+  const campaignsHaveTargets = creationCampaigns.every(campaignHasTargets);
   const checks = [
     {
-      ok: new Set(activeCampaigns.map((c, i) => (c.name.trim() || defaultCampaignNameFor(c, i, byId("bulkMarketplace").value)).toLowerCase())).size === activeCampaigns.length,
+      ok: new Set(creationCampaigns.map((c, i) => (c.name.trim() || defaultCampaignNameFor(c, i, byId("bulkMarketplace").value)).toLowerCase())).size === creationCampaigns.length,
       title: "活动名称唯一",
       body: "同一文件内的活动名称不能重复，以免子记录关联到错误活动。"
     },
     {
-      ok: activeCampaigns.every(placementBidsValid),
+      ok: creationCampaigns.every(placementBidsValid),
       title: "广告位竞价调整",
       body: "每个广告位请输入 0–900 的整数百分比；留空按 0%，不接受负数或小数。"
+    },
+    {
+      ok: reachUpdateCampaigns.every((campaign) => /^\d{5,}$/.test(String(campaign.existingCampaignId || "").trim())),
+      title: "站内及站外触达范围",
+      body: "仅限亚马逊或扩大站外触达的批量更新需要真实的现有 Campaign ID；新建活动暂不支持通过批量表限制站外触达。"
     },
     {
       ok: !portfolioId || (/^\d{5,}$/.test(portfolioId) && !isPlaceholderValue(portfolioId)),
