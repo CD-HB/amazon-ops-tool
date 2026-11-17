@@ -1957,7 +1957,7 @@ function buildRowsForCampaign(campaign, index, settings) {
       "Targeting Type": targetingType === "auto" ? "Auto" : "Manual",
       "Daily Budget": budget,
       "Bidding Strategy": biddingStrategy,
-      "Off-Amazon ad serving": campaign.offAmazonServing === "increase" ? "Increase reach" : "Limit reach",
+      "Off-Amazon ad serving": campaign.offAmazonServing === "increase" ? "扩大受众触达" : "限制在亚马逊站外的花费",
       "Campaign Type": isVideoCampaign(campaign) ? "Sponsored Brands" : "Sponsored Products",
       "Ad Format": isVideoCampaign(campaign) ? "Video" : "",
       "Media ID": isVideoCampaign(campaign) ? campaign.creativeAssetId || "" : "",
