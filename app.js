@@ -200,7 +200,7 @@ const campaignTypeOptions = [
 ];
 
 const singleKeywordGroupOptions = {
-  product: { label: "与您的商品相关的关键词", expression: 'keyword-group="product"' },
+  product: { label: "与您的商品相关的关键词", expression: 'keyword-group="products"' },
   category: { label: "与您的商品类别相关的关键词", expression: 'keyword-group="category"' }
 };
 
