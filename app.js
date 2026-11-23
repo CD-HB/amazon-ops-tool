@@ -204,6 +204,20 @@ const singleKeywordGroupOptions = {
   category: { label: "与您的商品类别相关的关键词", expression: 'keyword-group="category"' }
 };
 
+function normalizeKeywordGroupTargets(campaign, defaultBid = 0.45) {
+  return Object.entries(singleKeywordGroupOptions).map(([group, option]) => {
+    const saved = campaign.keywordGroupTargets?.[group];
+    const legacySelected = campaign.keywordGroup === group || campaign.keywordGroupExpression === option.expression;
+    return {
+      group,
+      label: option.label,
+      expression: option.expression,
+      enabled: saved ? saved.enabled !== false : legacySelected,
+      bid: Number(saved?.bid ?? (legacySelected ? campaign.defaultBid : defaultBid)) || defaultBid
+    };
+  });
+}
+
 const bulkColumns = [
   "Product",
   "Entity",
@@ -1817,20 +1831,20 @@ function createSingleKeywordCampaigns(text, settings, existingCampaigns = bulkCa
       placementProduct: placementSettings.placementProduct
     });
   }));
-  const keywordGroupCampaigns = keywordGroups.map((group, groupIndex) => {
-    const option = singleKeywordGroupOptions[group];
-    const groupBid = Number(keywordGroupBids[group] ?? settings.keywordGroupBid);
-    return createBulkCampaign({
-      name: uniqueName(`${nameSku}-关键词组-${option.label}`),
-      type: "keywordGroup", keywordGroup: group, keywordGroupLabel: option.label,
-      keywordGroupExpression: option.expression, keywords: "", keywordBids: "", targets: "",
-      budget: settings.budget, defaultBid: groupBid, products: settings.products.trim(),
-      adGroupSuffix: String(existingCampaigns.length + keywordCampaigns.length + groupIndex + 1),
+  const keywordGroupCampaigns = keywordGroups.length ? [createBulkCampaign({
+      name: uniqueName(`${nameSku}-关键词组`),
+      type: "keywordGroup", keywordGroup: keywordGroups[0],
+      keywordGroupTargets: Object.fromEntries(Object.keys(singleKeywordGroupOptions).map((group) => [group, {
+        enabled: keywordGroups.includes(group),
+        bid: Number(keywordGroupBids[group] ?? settings.keywordGroupBid ?? 0.45)
+      }])),
+      keywords: "", keywordBids: "", targets: "",
+      budget: settings.budget, defaultBid: Number(keywordGroupBids[keywordGroups[0]] ?? settings.keywordGroupBid ?? 0.45), products: settings.products.trim(),
+      adGroupSuffix: String(existingCampaigns.length + keywordCampaigns.length + 1),
       placementTop: placementSettings.placementTop,
       placementRest: placementSettings.placementRest,
       placementProduct: placementSettings.placementProduct
-    });
-  });
+    })] : [];
   return [...keywordCampaigns, ...keywordGroupCampaigns];
 }
 
@@ -1860,8 +1874,9 @@ function bindSingleKeywordBuilder() {
     const budget = numberValue("singleKeywordBudget");
     const matchCount = form.querySelectorAll('input[name="singleKeywordMatch"]:checked').length;
     const keywordGroupCount = form.querySelectorAll('input[name="singleKeywordGroup"]:checked').length;
-    const activityCount = keywordCount * matchCount + keywordGroupCount;
-    byId("singleKeywordSummary").textContent = `预计生成 ${activityCount} 个活动 · 普通关键词 ${keywordCount} × ${matchCount} 种匹配方式 + 关键词组 ${keywordGroupCount} · 合并 ${duplicates} 条重复关键词 · 日预算合计 ${(activityCount * budget).toFixed(2)}（站点本币）`;
+    const keywordGroupActivityCount = keywordGroupCount ? 1 : 0;
+    const activityCount = keywordCount * matchCount + keywordGroupActivityCount;
+    byId("singleKeywordSummary").textContent = `预计生成 ${activityCount} 个活动 · 普通关键词 ${keywordCount} × ${matchCount} 种匹配方式 + 关键词组活动 ${keywordGroupActivityCount}（${keywordGroupCount} 个投放目标）· 合并 ${duplicates} 条重复关键词 · 日预算合计 ${(activityCount * budget).toFixed(2)}（站点本币）`;
   });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1964,16 +1979,13 @@ function buildTargetRows(campaign, campaignName, adGroupName, defaultBid) {
   }
 
   if (campaign.type === "keywordGroup") {
-    const option = singleKeywordGroupOptions[campaign.keywordGroup];
-    const expression = campaign.keywordGroupExpression || option?.expression;
-    if (!expression) return [];
-    return [createCampaignRow(campaign, {
+    return normalizeKeywordGroupTargets(campaign, defaultBid).filter((item) => item.enabled).map((item) => createCampaignRow(campaign, {
       Entity: "Product targeting",
       "Campaign Id": campaignName,
       "Ad Group Id": adGroupName,
-      Bid: defaultBid,
-      "Product Targeting Expression": expression
-    })];
+      Bid: item.bid,
+      "Product Targeting Expression": item.expression
+    }));
   }
 
   const matchTypes = normalizeKeywordMatchTypes(campaign);
@@ -2372,6 +2384,22 @@ function renderAutoTargetEditor(campaign) {
   `;
 }
 
+function renderKeywordGroupTargetEditor(campaign) {
+  const defaultBid = readCampaignNumber(campaign, "defaultBid", 0.45);
+  return `
+    <div class="auto-target-grid">
+      ${normalizeKeywordGroupTargets(campaign, defaultBid).map((item) => `
+        <label class="auto-target-option">
+          <input data-keyword-group-key="${item.group}" data-keyword-group-field="enabled" type="checkbox" ${item.enabled ? "checked" : ""} />
+          <span>${escapeHtml(item.label)}</span>
+          <input data-keyword-group-key="${item.group}" data-keyword-group-field="bid" type="number" min="0.02" step="0.01" value="${escapeHtml(item.bid)}" aria-label="${escapeHtml(item.label)}竞价" ${item.enabled ? "" : "disabled"} />
+        </label>
+      `).join("")}
+      <span class="input-hint">可添加、移除关键词组并分别修改竞价；至少保留一个。</span>
+    </div>
+  `;
+}
+
 function renderAsinTargetEditor(campaign) {
   const defaultBid = readCampaignNumber(campaign, "defaultBid", 0.45);
   return `
@@ -2541,7 +2569,7 @@ function renderBulkCampaignTable() {
               campaign.type === "auto"
                 ? renderAutoTargetEditor(campaign)
                 : campaign.type === "keywordGroup"
-                  ? `<div class="disabled-cell"><strong>${escapeHtml(campaign.keywordGroupLabel || singleKeywordGroupOptions[campaign.keywordGroup]?.label || "亚马逊关键词组")}</strong><br /><span class="input-hint">由亚马逊动态维护</span></div>`
+                  ? renderKeywordGroupTargetEditor(campaign)
                 : campaign.type === "asin" || campaign.type === "videoAsin"
                   ? renderAsinTargetEditor(campaign)
                   : renderKeywordTargetEditor(campaign)
@@ -2584,6 +2612,10 @@ function updateBulkCampaignFromControl(control) {
       campaign.keywordGroup = "product";
       campaign.keywordGroupLabel = singleKeywordGroupOptions.product.label;
       campaign.keywordGroupExpression = singleKeywordGroupOptions.product.expression;
+      campaign.keywordGroupTargets = {
+        product: { enabled: true, bid: readCampaignNumber(campaign, "defaultBid", 0.45) },
+        category: { enabled: false, bid: readCampaignNumber(campaign, "defaultBid", 0.45) }
+      };
     }
     if ((control.value === "asin" || control.value === "videoAsin") && !campaign.asinTargets) {
       campaign.asinTargets = defaultAsinTargets(readCampaignNumber(campaign, "defaultBid", 0.45));
@@ -2659,6 +2691,30 @@ function updateAsinTargetFromControl(control) {
   }
 }
 
+function updateKeywordGroupTargetFromControl(control) {
+  const row = control.closest("[data-campaign-id]");
+  if (!row) return;
+  const campaign = bulkCampaigns.find((item) => item.id === row.dataset.campaignId);
+  if (!campaign) return;
+  const defaultBid = readCampaignNumber(campaign, "defaultBid", 0.45);
+  if (!campaign.keywordGroupTargets) {
+    campaign.keywordGroupTargets = Object.fromEntries(normalizeKeywordGroupTargets(campaign, defaultBid).map((item) => [item.group, { enabled: item.enabled, bid: item.bid }]));
+  }
+  const key = control.dataset.keywordGroupKey;
+  const field = control.dataset.keywordGroupField;
+  campaign.keywordGroupTargets[key] ||= { enabled: false, bid: defaultBid };
+  if (field === "enabled") {
+    const enabledCount = Object.values(campaign.keywordGroupTargets).filter((item) => item.enabled).length;
+    if (!control.checked && enabledCount <= 1) {
+      control.checked = true;
+      return false;
+    }
+    campaign.keywordGroupTargets[key].enabled = control.checked;
+  }
+  if (field === "bid") campaign.keywordGroupTargets[key].bid = control.value;
+  return true;
+}
+
 function duplicateBulkCampaign(id) {
   const campaign = bulkCampaigns.find((item) => item.id === id);
   if (!campaign) return;
@@ -2666,6 +2722,7 @@ function duplicateBulkCampaign(id) {
   const copy = {
     ...campaign,
     asinTargets: campaign.asinTargets ? JSON.parse(JSON.stringify(campaign.asinTargets)) : undefined,
+    keywordGroupTargets: campaign.keywordGroupTargets ? JSON.parse(JSON.stringify(campaign.keywordGroupTargets)) : undefined,
     autoTargets: campaign.autoTargets ? JSON.parse(JSON.stringify(campaign.autoTargets)) : undefined,
     id: createId("bulk-campaign"),
     name: `${campaign.name || "Campaign"} Copy`,
@@ -2689,7 +2746,7 @@ function campaignHasTargets(campaign) {
     return normalizeAutoTargets(campaign, defaultBid).some((item) => item.enabled);
   }
   if (campaign.type === "keywordGroup") {
-    return Boolean(campaign.keywordGroupExpression || singleKeywordGroupOptions[campaign.keywordGroup]?.expression);
+    return normalizeKeywordGroupTargets(campaign, defaultBid).some((item) => item.enabled && Number(item.bid) >= 0.02);
   }
   if (campaign.type === "asin" || campaign.type === "videoAsin") {
     const asins = parseAsinTargets(campaign.targets);
@@ -3663,6 +3720,13 @@ function bindEvents() {
     renderBulkAds();
   });
   byId("bulkCampaignTableBody").addEventListener("input", (event) => {
+    const keywordGroupControl = event.target.closest("[data-keyword-group-key]");
+    if (keywordGroupControl) {
+      updateKeywordGroupTargetFromControl(keywordGroupControl);
+      saveBulkCampaigns();
+      renderBulkAds();
+      return;
+    }
     const autoControl = event.target.closest("[data-auto-key]");
     if (autoControl) {
       updateAutoTargetFromControl(autoControl);
@@ -3684,6 +3748,14 @@ function bindEvents() {
     renderBulkAds();
   });
   byId("bulkCampaignTableBody").addEventListener("change", (event) => {
+    const keywordGroupControl = event.target.closest("[data-keyword-group-key]");
+    if (keywordGroupControl) {
+      const changed = updateKeywordGroupTargetFromControl(keywordGroupControl);
+      saveBulkCampaigns();
+      if (keywordGroupControl.dataset.keywordGroupField === "enabled" && changed !== false) renderBulkCampaignTable();
+      renderBulkAds();
+      return;
+    }
     const matchControl = event.target.closest("[data-match-type]");
     if (matchControl) {
       updateKeywordMatchTypeFromControl(matchControl);

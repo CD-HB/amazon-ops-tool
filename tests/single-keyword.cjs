@@ -26,13 +26,14 @@ assert.deepEqual(JSON.parse(run('JSON.stringify([placed[0].placementTop, placed[
 run(`var placementRows = buildRowsForCampaign(placed[0],0,{marketplace:'US',startDate:'20261110',portfolioId:''}).filter(r=>r.Entity === 'Bidding adjustment');`);
 assert.deepEqual(JSON.parse(run('JSON.stringify(placementRows.map(r=>r.Percentage))')),[50,25,100]);
 run(`var keywordGroups = createSingleKeywordCampaigns('', {...config, matches:[], keywordGroups:['product','category'], keywordGroupBids:{product:0.61,category:0.72}}, []);`);
-assert.equal(run('keywordGroups.length'),2);
-assert.deepEqual(JSON.parse(run('JSON.stringify(keywordGroups.map(c=>c.keywordGroupExpression))')),['keyword-group="products"','keyword-group="category"']);
-assert.deepEqual(JSON.parse(run('JSON.stringify(keywordGroups.map(c=>c.defaultBid))')),[0.61,0.72]);
+assert.equal(run('keywordGroups.length'),1);
+assert.equal(run('keywordGroups[0].type'),'keywordGroup');
+assert.deepEqual(JSON.parse(run('JSON.stringify(keywordGroups[0].keywordGroupTargets)')),{product:{enabled:true,bid:0.61},category:{enabled:true,bid:0.72}});
 run(`var keywordGroupRows = keywordGroups.flatMap((c,i)=>buildRowsForCampaign(c,i,{marketplace:'US',startDate:'20261110',portfolioId:''}));`);
 assert.equal(run('keywordGroupRows.filter(r=>r.Entity === "Product targeting").length'),2);
 assert.equal(run('keywordGroupRows.filter(r=>r.Entity === "Keyword").length'),0);
 assert.deepEqual(JSON.parse(run('JSON.stringify(keywordGroupRows.filter(r=>r.Entity === "Product targeting").map(r=>r["Product Targeting Expression"]))')),['keyword-group="products"','keyword-group="category"']);
+assert.deepEqual(JSON.parse(run('JSON.stringify(keywordGroupRows.filter(r=>r.Entity === "Product targeting").map(r=>r.Bid))')),[0.61,0.72]);
 run(`var mixedTargeting = createSingleKeywordCampaigns('bandana bag', {...config, matches:['exact','phrase'], keywordGroups:['category'], keywordGroupBid:0.6}, []);`);
 assert.equal(run('mixedTargeting.length'),3);
 assert.equal(run('createSingleKeywordCampaigns("bandana bag", {...config, prefix:""}, [])[0].name'),'MY-BANDANA-BAG-exact-bandana bag');
