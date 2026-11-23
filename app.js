@@ -1794,7 +1794,7 @@ function createSingleKeywordCampaigns(text, settings, existingCampaigns = bulkCa
   };
   if (!placementBidsValid(placementSettings)) throw new Error("广告位调整必须是 0–900 之间的整数百分比。");
   const products = parseBulkProducts(settings.products);
-  if (!products.length || !products.every(productIsUploadable)) throw new Error("请填写真实的推广 SKU / ASIN，所有活动共用这些产品。");
+  if (!products.length || !products.every(productIsUploadable)) throw new Error("请填写卖家后台中的真实推广 SKU；此账户不支持使用 ASIN 作为推广商品。");
   const usedNames = new Set(existingCampaigns.map((campaign) => String(campaign.name).toLowerCase()));
   const nameSku = String(settings.prefix || "").trim() || products[0].sku || products[0].asin;
   const uniqueName = (baseName) => {
@@ -1900,7 +1900,7 @@ function buildProductAdRows(campaign, products, campaignName, adGroupName) {
       "Campaign Id": campaignName,
       "Ad Group Id": adGroupName,
       sku: product.sku || "",
-      asin: product.sku ? "" : product.asin
+      asin: ""
     })
   );
 }
@@ -2534,7 +2534,7 @@ function renderBulkCampaignTable() {
             <input data-field="defaultBid" type="number" min="0.02" step="0.01" value="${escapeHtml(campaign.defaultBid)}" />
           </td>
           <td>
-            <textarea data-field="products" rows="3" placeholder="${isVideoCampaign(campaign) ? "B0ASIN0001, SKU（视频广告第一列必须是真实 ASIN）" : "B0ASIN0001, SKU"}">${escapeHtml(campaign.products)}</textarea>
+            <textarea data-field="products" rows="3" placeholder="${isVideoCampaign(campaign) ? "视频广告素材商品" : "每行一个卖家 SKU"}">${escapeHtml(campaign.products)}</textarea>
           </td>
           <td>
             ${
@@ -2680,8 +2680,7 @@ function deleteBulkCampaign(id) {
 }
 
 function productIsUploadable(product) {
-  if (product.sku && !isPlaceholderValue(product.sku)) return true;
-  return isAsin(product.asin) && !isPlaceholderValue(product.asin);
+  return Boolean(product.sku && !isPlaceholderValue(product.sku));
 }
 
 function campaignHasTargets(campaign) {
@@ -2751,7 +2750,7 @@ function getBulkValidation(rows = bulkRows) {
     {
       ok: activeCampaigns.length > 0 && campaignsHaveProducts,
       title: "Product Ads",
-      body: "每个活动至少填写一个真实 SKU 或 10 位 ASIN；只填 ASIN 时会导出到 asin 列，不再生成 SKU-1。"
+      body: "每个活动至少填写一个卖家后台中的真实 SKU；此账户不支持使用 ASIN 作为推广商品。"
     },
     {
       ok: campaignsHaveTargets,

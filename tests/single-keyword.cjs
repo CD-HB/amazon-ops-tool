@@ -14,6 +14,8 @@ assert.equal(run('generated[1].keywords'),'bandana tote bag');
 assert.equal(run('generated[0].biddingStrategy'),'Fixed bid');
 assert.equal(run('generated[0].name'),'SP-bag-exact-bandana bag');
 assert.equal(run('generated[0].placementTop'),0);
+run(`var skuRows = buildRowsForCampaign(generated[0],0,{marketplace:'US',startDate:'20261110',portfolioId:''}).filter(r=>r.Entity === 'Product ad');`);
+assert.equal(run('skuRows.every(r=>r.sku && !r.asin)'),true);
 run(`var multiMatch = createSingleKeywordCampaigns('bandana bag\\nbandana purse', {...config, matches:['exact','phrase','broad']}, []);`);
 assert.equal(run('multiMatch.length'),6);
 assert.deepEqual(JSON.parse(run('JSON.stringify(multiMatch.map(c=>c.matchType))')),['exact','phrase','broad','exact','phrase','broad']);
@@ -35,7 +37,7 @@ run(`var mixedTargeting = createSingleKeywordCampaigns('bandana bag', {...config
 assert.equal(run('mixedTargeting.length'),3);
 assert.equal(run('createSingleKeywordCampaigns("bandana bag", {...config, prefix:""}, [])[0].name'),'MY-BANDANA-BAG-exact-bandana bag');
 assert.equal(run('createSingleKeywordCampaigns("bandana bag", {...config, prefix:"", products:"B012345678, MY-SKU"}, [])[0].name'),'MY-SKU-exact-bandana bag');
-assert.equal(run('createSingleKeywordCampaigns("bandana bag", {...config, prefix:"", products:"B012345678"}, [])[0].name'),'B012345678-exact-bandana bag');
+assert.throws(()=>run('createSingleKeywordCampaigns("bandana bag", {...config, prefix:"", products:"B012345678"}, [])'));
 for (const match of ['exact','phrase','broad']) {
   ctx.match = match;
   run(`generated = createSingleKeywordCampaigns('bandana bag\\nbandana purse', {...config, match}, []);
