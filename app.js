@@ -1782,8 +1782,11 @@ function createSingleKeywordCampaigns(text, settings, existingCampaigns = bulkCa
   if (keywordGroups.some((group) => !singleKeywordGroupOptions[group])) throw new Error("亚马逊关键词组选项无效。");
   if (!entries.length && !keywordGroups.length) throw new Error("请粘贴普通关键词，或至少选择一个亚马逊关键词组。");
   if (entries.length && !matches.length) throw new Error("粘贴了普通关键词时，请至少选择一种匹配方式。");
-  const keywordGroupBid = Number(settings.keywordGroupBid);
-  if (keywordGroups.length && (!Number.isFinite(keywordGroupBid) || keywordGroupBid < 0.02)) throw new Error("关键词组竞价不能低于 0.02。");
+  const keywordGroupBids = settings.keywordGroupBids || {};
+  keywordGroups.forEach((group) => {
+    const groupBid = Number(keywordGroupBids[group] ?? settings.keywordGroupBid);
+    if (!Number.isFinite(groupBid) || groupBid < 0.02) throw new Error(`${singleKeywordGroupOptions[group].label}的竞价不能低于 0.02。`);
+  });
   const placementSettings = {
     placementTop: settings.placementTop ?? 0,
     placementRest: settings.placementRest ?? 0,
@@ -1816,11 +1819,12 @@ function createSingleKeywordCampaigns(text, settings, existingCampaigns = bulkCa
   }));
   const keywordGroupCampaigns = keywordGroups.map((group, groupIndex) => {
     const option = singleKeywordGroupOptions[group];
+    const groupBid = Number(keywordGroupBids[group] ?? settings.keywordGroupBid);
     return createBulkCampaign({
       name: uniqueName(`${nameSku}-关键词组-${option.label}`),
       type: "keywordGroup", keywordGroup: group, keywordGroupLabel: option.label,
       keywordGroupExpression: option.expression, keywords: "", keywordBids: "", targets: "",
-      budget: settings.budget, defaultBid: keywordGroupBid, products: settings.products.trim(),
+      budget: settings.budget, defaultBid: groupBid, products: settings.products.trim(),
       adGroupSuffix: String(existingCampaigns.length + keywordCampaigns.length + groupIndex + 1),
       placementTop: placementSettings.placementTop,
       placementRest: placementSettings.placementRest,
@@ -1839,6 +1843,11 @@ function bindSingleKeywordBuilder() {
     byId("singleKeywordIndividualBidsField").hidden = !individual;
     byId("singleKeywordIndividualBids").required = individual;
     byId("singleKeywordBid").required = !individual;
+    form.querySelectorAll('input[name="singleKeywordGroup"]').forEach((checkbox) => {
+      const bidInput = form.querySelector(`[data-keyword-group-bid="${checkbox.value}"]`);
+      bidInput.disabled = !checkbox.checked;
+      bidInput.required = checkbox.checked;
+    });
     let keywordCount = 0;
     let duplicates = 0;
     try {
@@ -1864,7 +1873,7 @@ function bindSingleKeywordBuilder() {
         individualBids: byId("singleKeywordIndividualBids").value,
         matches: [...form.querySelectorAll('input[name="singleKeywordMatch"]:checked')].map((input) => input.value),
         keywordGroups: [...form.querySelectorAll('input[name="singleKeywordGroup"]:checked')].map((input) => input.value),
-        keywordGroupBid: numberValue("singleKeywordGroupBid"),
+        keywordGroupBids: Object.fromEntries([...form.querySelectorAll('input[name="singleKeywordGroup"]:checked')].map((input) => [input.value, Number(form.querySelector(`[data-keyword-group-bid="${input.value}"]`).value)])),
         marketplace: byId("bulkMarketplace").value,
         placementTop: numberValue("singleKeywordPlacementTop"),
         placementRest: numberValue("singleKeywordPlacementRest"),
@@ -1876,6 +1885,7 @@ function bindSingleKeywordBuilder() {
       renderBulkAds();
       byId("singleKeywordInput").value = "";
       form.querySelectorAll('input[name="singleKeywordGroup"]:checked').forEach((input) => { input.checked = false; });
+      form.querySelectorAll('[data-keyword-group-bid]').forEach((input) => { input.disabled = true; input.required = false; });
       byId("singleKeywordSummary").textContent = `已添加 ${campaigns.length} 个单关键词活动到下方表格，原有活动保留。请检查后使用上方“下载上传表格”导出。`;
     } catch (error) {
       byId("singleKeywordSummary").textContent = error.message;

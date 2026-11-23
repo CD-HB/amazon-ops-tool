@@ -906,6 +906,10 @@ label textarea {
 .single-keyword-match-options legend { padding: 0 5px; font-weight: 700; color: var(--ink); }
 .single-keyword-match-options label { display: inline-flex; flex-direction: row; align-items: center; gap: 6px; white-space: nowrap; }
 .single-keyword-match-options input { width: auto; margin: 0; }
+.keyword-group-option { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
+.single-keyword-match-options .keyword-group-bid { gap: 6px; color: var(--muted); font-size: 12px; }
+.single-keyword-match-options .keyword-group-bid input { width: 88px; padding: 7px 9px; }
+.single-keyword-match-options .keyword-group-bid input:disabled { opacity: 0.55; cursor: not-allowed; }
 .single-keyword-bid-help {
   grid-column: span 2;
   align-self: end;

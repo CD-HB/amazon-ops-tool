@@ -23,10 +23,10 @@ run(`var placed = createSingleKeywordCampaigns('bandana bag', {...config, placem
 assert.deepEqual(JSON.parse(run('JSON.stringify([placed[0].placementTop, placed[0].placementRest, placed[0].placementProduct])')),[50,25,100]);
 run(`var placementRows = buildRowsForCampaign(placed[0],0,{marketplace:'US',startDate:'20261110',portfolioId:''}).filter(r=>r.Entity === 'Bidding adjustment');`);
 assert.deepEqual(JSON.parse(run('JSON.stringify(placementRows.map(r=>r.Percentage))')),[50,25,100]);
-run(`var keywordGroups = createSingleKeywordCampaigns('', {...config, matches:[], keywordGroups:['product','category'], keywordGroupBid:0.61}, []);`);
+run(`var keywordGroups = createSingleKeywordCampaigns('', {...config, matches:[], keywordGroups:['product','category'], keywordGroupBids:{product:0.61,category:0.72}}, []);`);
 assert.equal(run('keywordGroups.length'),2);
 assert.deepEqual(JSON.parse(run('JSON.stringify(keywordGroups.map(c=>c.keywordGroupExpression))')),['keyword-group="products"','keyword-group="category"']);
-assert.equal(run('keywordGroups.every(c=>c.type === "keywordGroup" && c.defaultBid === 0.61)'),true);
+assert.deepEqual(JSON.parse(run('JSON.stringify(keywordGroups.map(c=>c.defaultBid))')),[0.61,0.72]);
 run(`var keywordGroupRows = keywordGroups.flatMap((c,i)=>buildRowsForCampaign(c,i,{marketplace:'US',startDate:'20261110',portfolioId:''}));`);
 assert.equal(run('keywordGroupRows.filter(r=>r.Entity === "Product targeting").length'),2);
 assert.equal(run('keywordGroupRows.filter(r=>r.Entity === "Keyword").length'),0);

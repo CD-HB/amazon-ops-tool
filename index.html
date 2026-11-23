@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SellerOps | 亚马逊运营工具台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%23121a21'/%3E%3Cpath fill='white' d='M12 35 22 10h4l10 25h-6l-2-5H20l-2 5h-6Zm10-10h4l-2-7-2 7Z'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="styles.css?v=20261117-new-campaign-reach" />
+    <link rel="stylesheet" href="styles.css?v=20261123-keyword-group-bids" />
   </head>
   <body>
     <div class="auth-screen" id="authScreen" hidden>
@@ -456,14 +456,19 @@
                   </fieldset>
                   <fieldset class="single-keyword-match-options">
                     <legend>亚马逊关键词组（可多选）</legend>
-                    <label><input type="checkbox" name="singleKeywordGroup" value="product" />与您的商品相关的关键词</label>
-                    <label><input type="checkbox" name="singleKeywordGroup" value="category" />与您的商品类别相关的关键词</label>
+                    <div class="keyword-group-option">
+                      <label><input type="checkbox" name="singleKeywordGroup" value="product" />与您的商品相关的关键词</label>
+                      <label class="keyword-group-bid">竞价<input id="singleKeywordGroupBidProduct" data-keyword-group-bid="product" type="number" min="0.02" step="0.01" value="0.45" disabled /></label>
+                    </div>
+                    <div class="keyword-group-option">
+                      <label><input type="checkbox" name="singleKeywordGroup" value="category" />与您的商品类别相关的关键词</label>
+                      <label class="keyword-group-bid">竞价<input id="singleKeywordGroupBidCategory" data-keyword-group-bid="category" type="number" min="0.02" step="0.01" value="0.45" disabled /></label>
+                    </div>
                     <span class="input-hint">关键词组由亚马逊动态维护，无需在左侧粘贴关键词；每组选项生成一个活动。</span>
                   </fieldset>
                   <label>每个活动日预算（站点本币）<input id="singleKeywordBudget" type="number" min="1" step="0.01" value="10" required /></label>
                   <label>竞价设置<select id="singleKeywordBidMode"><option value="batch">批量统一竞价</option><option value="individual">每个词单独竞价</option></select></label>
                   <label id="singleKeywordBidField">统一关键词竞价（站点本币）<input id="singleKeywordBid" type="number" min="0.02" step="0.01" value="0.45" required /></label>
-                  <label>关键词组竞价（站点本币）<input id="singleKeywordGroupBid" type="number" min="0.02" step="0.01" value="0.45" required /></label>
                   <fieldset class="single-keyword-placements">
                     <legend>广告位调整（%）</legend>
                     <label>搜索结果顶部（首页）<input id="singleKeywordPlacementTop" type="number" min="0" max="900" step="1" value="0" required /></label>
@@ -691,7 +696,7 @@
       </main>
     </div>
 
-    <script src="app.js?v=20261123-keyword-groups-products-fix"></script>
+    <script src="app.js?v=20261123-keyword-group-bids"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.refreshIcons && window.refreshIcons()"></script>
   </body>
 </html>
