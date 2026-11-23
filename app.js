@@ -1792,6 +1792,8 @@ function createSingleKeywordCampaigns(text, settings, existingCampaigns = bulkCa
   if (!Number.isFinite(settings.budget) || settings.budget < 1) throw new Error("请填写有效的日预算（至少 1）。");
   const matches = Array.isArray(settings.matches) ? settings.matches : [settings.match];
   const keywordGroups = Array.isArray(settings.keywordGroups) ? settings.keywordGroups : [];
+  const structureMode = settings.structureMode || "separate";
+  if (!["separate", "combined"].includes(structureMode)) throw new Error("活动生成方式无效。");
   if (matches.some((match) => !["exact", "phrase", "broad"].includes(match))) throw new Error("普通关键词匹配方式无效。");
   if (keywordGroups.some((group) => !singleKeywordGroupOptions[group])) throw new Error("亚马逊关键词组选项无效。");
   if (!entries.length && !keywordGroups.length) throw new Error("请粘贴普通关键词，或至少选择一个亚马逊关键词组。");
@@ -1819,7 +1821,18 @@ function createSingleKeywordCampaigns(text, settings, existingCampaigns = bulkCa
     usedNames.add(name.toLowerCase());
     return name;
   };
-  const keywordCampaigns = entries.flatMap(({ keyword, bid }, keywordIndex) => matches.map((match, matchIndex) => {
+  const keywordCampaigns = structureMode === "combined" && entries.length ? [createBulkCampaign({
+    name: uniqueName(`${nameSku}-关键词合并活动`),
+    type: "keyword",
+    keywords: entries.map((item) => item.keyword).join("\n"),
+    keywordBids: entries.map((item) => item.bid).join("\n"),
+    targets: "", matchType: matches[0], matchTypes: matches,
+    budget: settings.budget, defaultBid: entries[0].bid, products: settings.products.trim(),
+    adGroupSuffix: String(existingCampaigns.length + 1),
+    placementTop: placementSettings.placementTop,
+    placementRest: placementSettings.placementRest,
+    placementProduct: placementSettings.placementProduct
+  })] : entries.flatMap(({ keyword, bid }, keywordIndex) => matches.map((match, matchIndex) => {
     const baseName = `${nameSku}-${match}-${keyword}`.slice(0, 120);
     return createBulkCampaign({
       name: uniqueName(baseName), type: "keyword", keywords: keyword, keywordBids: "", targets: "",
@@ -1831,20 +1844,23 @@ function createSingleKeywordCampaigns(text, settings, existingCampaigns = bulkCa
       placementProduct: placementSettings.placementProduct
     });
   }));
-  const keywordGroupCampaigns = keywordGroups.length ? [createBulkCampaign({
+  const createKeywordGroupCampaign = (selectedGroups, suffix) => createBulkCampaign({
       name: uniqueName(`${nameSku}-关键词组`),
-      type: "keywordGroup", keywordGroup: keywordGroups[0],
+      type: "keywordGroup", keywordGroup: selectedGroups[0],
       keywordGroupTargets: Object.fromEntries(Object.keys(singleKeywordGroupOptions).map((group) => [group, {
-        enabled: keywordGroups.includes(group),
+        enabled: selectedGroups.includes(group),
         bid: Number(keywordGroupBids[group] ?? settings.keywordGroupBid ?? 0.45)
       }])),
       keywords: "", keywordBids: "", targets: "",
-      budget: settings.budget, defaultBid: Number(keywordGroupBids[keywordGroups[0]] ?? settings.keywordGroupBid ?? 0.45), products: settings.products.trim(),
-      adGroupSuffix: String(existingCampaigns.length + keywordCampaigns.length + 1),
+      budget: settings.budget, defaultBid: Number(keywordGroupBids[selectedGroups[0]] ?? settings.keywordGroupBid ?? 0.45), products: settings.products.trim(),
+      adGroupSuffix: String(suffix),
       placementTop: placementSettings.placementTop,
       placementRest: placementSettings.placementRest,
       placementProduct: placementSettings.placementProduct
-    })] : [];
+    });
+  const keywordGroupCampaigns = structureMode === "combined"
+    ? (keywordGroups.length ? [createKeywordGroupCampaign(keywordGroups, existingCampaigns.length + keywordCampaigns.length + 1)] : [])
+    : keywordGroups.map((group, index) => createKeywordGroupCampaign([group], existingCampaigns.length + keywordCampaigns.length + index + 1));
   return [...keywordCampaigns, ...keywordGroupCampaigns];
 }
 
@@ -1874,9 +1890,12 @@ function bindSingleKeywordBuilder() {
     const budget = numberValue("singleKeywordBudget");
     const matchCount = form.querySelectorAll('input[name="singleKeywordMatch"]:checked').length;
     const keywordGroupCount = form.querySelectorAll('input[name="singleKeywordGroup"]:checked').length;
-    const keywordGroupActivityCount = keywordGroupCount ? 1 : 0;
-    const activityCount = keywordCount * matchCount + keywordGroupActivityCount;
-    byId("singleKeywordSummary").textContent = `预计生成 ${activityCount} 个活动 · 普通关键词 ${keywordCount} × ${matchCount} 种匹配方式 + 关键词组活动 ${keywordGroupActivityCount}（${keywordGroupCount} 个投放目标）· 合并 ${duplicates} 条重复关键词 · 日预算合计 ${(activityCount * budget).toFixed(2)}（站点本币）`;
+    const structureMode = byId("singleKeywordStructureMode").value;
+    const keywordActivityCount = structureMode === "combined" ? (keywordCount ? 1 : 0) : keywordCount * matchCount;
+    const keywordGroupActivityCount = structureMode === "combined" ? (keywordGroupCount ? 1 : 0) : keywordGroupCount;
+    const activityCount = keywordActivityCount + keywordGroupActivityCount;
+    const structureLabel = structureMode === "combined" ? "同类目标合并" : "每个目标单独活动";
+    byId("singleKeywordSummary").textContent = `预计生成 ${activityCount} 个活动 · ${structureLabel} · 普通关键词活动 ${keywordActivityCount} + 关键词组活动 ${keywordGroupActivityCount}（${keywordGroupCount} 个组目标）· 合并 ${duplicates} 条重复关键词 · 日预算合计 ${(activityCount * budget).toFixed(2)}（站点本币）`;
   });
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1889,6 +1908,7 @@ function bindSingleKeywordBuilder() {
         matches: [...form.querySelectorAll('input[name="singleKeywordMatch"]:checked')].map((input) => input.value),
         keywordGroups: [...form.querySelectorAll('input[name="singleKeywordGroup"]:checked')].map((input) => input.value),
         keywordGroupBids: Object.fromEntries([...form.querySelectorAll('input[name="singleKeywordGroup"]:checked')].map((input) => [input.value, Number(form.querySelector(`[data-keyword-group-bid="${input.value}"]`).value)])),
+        structureMode: byId("singleKeywordStructureMode").value,
         marketplace: byId("bulkMarketplace").value,
         placementTop: numberValue("singleKeywordPlacementTop"),
         placementRest: numberValue("singleKeywordPlacementRest"),
@@ -3722,9 +3742,11 @@ function bindEvents() {
   byId("bulkCampaignTableBody").addEventListener("input", (event) => {
     const keywordGroupControl = event.target.closest("[data-keyword-group-key]");
     if (keywordGroupControl) {
-      updateKeywordGroupTargetFromControl(keywordGroupControl);
-      saveBulkCampaigns();
-      renderBulkAds();
+      if (keywordGroupControl.dataset.keywordGroupField === "bid") {
+        updateKeywordGroupTargetFromControl(keywordGroupControl);
+        saveBulkCampaigns();
+        renderBulkAds();
+      }
       return;
     }
     const autoControl = event.target.closest("[data-auto-key]");

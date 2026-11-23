@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SellerOps | 亚马逊运营工具台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%23121a21'/%3E%3Cpath fill='white' d='M12 35 22 10h4l10 25h-6l-2-5H20l-2 5h-6Zm10-10h4l-2-7-2 7Z'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="styles.css?v=20261123-edit-keyword-groups" />
+    <link rel="stylesheet" href="styles.css?v=20261123-campaign-structure" />
   </head>
   <body>
     <div class="auth-screen" id="authScreen" hidden>
@@ -448,6 +448,7 @@
                   <label class="single-keyword-wide-field" id="singleKeywordIndividualBidsField" hidden>逐行对应竞价（站点本币）<textarea id="singleKeywordIndividualBids" rows="6" inputmode="decimal" placeholder="0.35&#10;0.45&#10;0.72"></textarea><span class="input-hint">第 1 行竞价对应第 1 行关键词，依次对应。</span></label>
                   <label class="single-keyword-wide-field">推广 SKU（每行一个）<textarea id="singleKeywordProducts" rows="6" placeholder="填写卖家后台中的真实 SKU；所有活动共用" required></textarea></label>
                   <label>命名 SKU（选填）<input id="singleKeywordPrefix" type="text" maxlength="50" placeholder="默认取第一个 SKU；名称为 SKU-匹配类型-关键词" /><span class="input-hint">填写多个 SKU 时默认取第一个，也可在这里指定用于活动名称的 SKU。</span></label>
+                  <label>活动生成方式<select id="singleKeywordStructureMode"><option value="separate">每个目标单独广告活动</option><option value="combined">同类目标合并到同一广告活动</option></select><span class="input-hint">普通关键词与关键词组属于不同投放类型；选择合并时会各自合并。</span></label>
                   <fieldset class="single-keyword-match-options">
                     <legend>普通关键词匹配方式（可多选）</legend>
                     <label><input type="checkbox" name="singleKeywordMatch" value="exact" checked />精准 Exact</label>
@@ -696,7 +697,7 @@
       </main>
     </div>
 
-    <script src="app.js?v=20261123-edit-keyword-groups"></script>
+    <script src="app.js?v=20261123-campaign-structure"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.refreshIcons && window.refreshIcons()"></script>
   </body>
 </html>
