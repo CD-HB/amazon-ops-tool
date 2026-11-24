@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SellerOps | 亚马逊运营工具台</title>
     <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%23121a21'/%3E%3Cpath fill='white' d='M12 35 22 10h4l10 25h-6l-2-5H20l-2 5h-6Zm10-10h4l-2-7-2 7Z'/%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="styles.css?v=20261123-campaign-structure" />
+    <link rel="stylesheet" href="styles.css?v=20261124-required-colors-local" />
   </head>
   <body>
     <div class="auth-screen" id="authScreen" hidden>
@@ -412,12 +412,13 @@
 
           <div class="bulk-layout">
             <div class="bulk-builder">
+              <p class="bulk-field-legend"><span class="required-key">红色为必填</span><span>黑色为选填</span></p>
               <form class="bulk-global-form" id="bulkAdsForm">
                 <label>
                   Portfolio ID（选填）
                   <input id="bulkPortfolioId" type="text" value="" placeholder="没有真实广告组合 ID 就留空" />
                 </label>
-                <label>
+                <label class="required-field">
                   站点
                   <select id="bulkMarketplace">
                     <option value="US">US</option>
@@ -426,11 +427,11 @@
                     <option value="JP">JP</option>
                   </select>
                 </label>
-                <label>
+                <label class="required-field">
                   开始日期
                   <input id="bulkStartDate" type="date" />
                 </label>
-                <label>
+                <label class="required-field">
                   默认竞价方案
                   <select id="bulkBiddingStrategy">
                     <option value="Dynamic bids - up and down">动态竞价 - 提高和降低</option>
@@ -441,44 +442,67 @@
               </form>
 
               <form class="single-keyword-builder" id="singleKeywordForm">
-                <h3>单关键词建活动</h3>
-                <p class="input-hint">普通关键词按“每个词 × 每种匹配方式”生成独立活动；亚马逊关键词组每选择一组生成一个独立活动。两种方式可以同时选择。</p>
+                <h3>批量创建广告活动</h3>
+                <p class="input-hint">可同时生成普通关键词、亚马逊关键词组和自动投放活动；活动生成方式决定同类目标分别创建还是合并创建。</p>
                 <div class="form-grid">
                   <label class="single-keyword-wide-field">批量粘贴普通关键词（选填）<textarea id="singleKeywordInput" rows="6" placeholder="bandana bag&#10;bandana tote bag&#10;bandana purse"></textarea></label>
                   <label class="single-keyword-wide-field" id="singleKeywordIndividualBidsField" hidden>逐行对应竞价（站点本币）<textarea id="singleKeywordIndividualBids" rows="6" inputmode="decimal" placeholder="0.35&#10;0.45&#10;0.72"></textarea><span class="input-hint">第 1 行竞价对应第 1 行关键词，依次对应。</span></label>
-                  <label class="single-keyword-wide-field">推广 SKU（每行一个）<textarea id="singleKeywordProducts" rows="6" placeholder="填写卖家后台中的真实 SKU；所有活动共用" required></textarea></label>
+                  <label class="single-keyword-wide-field required-field">推广 SKU（每行一个）<textarea id="singleKeywordProducts" rows="6" placeholder="填写卖家后台中的真实 SKU；所有活动共用" required></textarea></label>
+                  <fieldset class="single-keyword-match-options single-keyword-wide-field">
+                    <legend>共用否定词（选填）</legend>
+                    <label class="negative-builder-field">否定精准<textarea id="singleNegativeExact" rows="4" placeholder="每行一个否定精准词"></textarea></label>
+                    <label class="negative-builder-field">否定词组<textarea id="singleNegativePhrase" rows="4" placeholder="每行一个否定词组词"></textarea></label>
+                    <span class="input-hint">两个框的内容会分别应用到本次生成的所有广告活动。</span>
+                  </fieldset>
                   <label>命名 SKU（选填）<input id="singleKeywordPrefix" type="text" maxlength="50" placeholder="默认取第一个 SKU；名称为 SKU-匹配类型-关键词" /><span class="input-hint">填写多个 SKU 时默认取第一个，也可在这里指定用于活动名称的 SKU。</span></label>
-                  <label>活动生成方式<select id="singleKeywordStructureMode"><option value="separate">每个目标单独广告活动</option><option value="combined">同类目标合并到同一广告活动</option></select><span class="input-hint">普通关键词与关键词组属于不同投放类型；选择合并时会各自合并。</span></label>
+                  <p class="single-keyword-wide-field required-selection-hint">必填：普通关键词、亚马逊关键词组或自动投放至少选择一种。</p>
                   <fieldset class="single-keyword-match-options">
                     <legend>普通关键词匹配方式（可多选）</legend>
+                    <label class="target-structure-setting">普通关键词活动方式<select id="singleKeywordStructureMode"><option value="separate">每个关键词 / 匹配方式单独活动</option><option value="combined">所有关键词和所选匹配方式放在同一活动</option></select></label>
                     <label><input type="checkbox" name="singleKeywordMatch" value="exact" checked />精准 Exact</label>
                     <label><input type="checkbox" name="singleKeywordMatch" value="phrase" />词组 Phrase</label>
                     <label><input type="checkbox" name="singleKeywordMatch" value="broad" />广泛 Broad</label>
                   </fieldset>
                   <fieldset class="single-keyword-match-options">
                     <legend>亚马逊关键词组（可多选）</legend>
+                    <label class="target-structure-setting">关键词组活动方式<select id="singleKeywordGroupStructureMode"><option value="separate">每个关键词组单独活动</option><option value="combined">所选关键词组放在同一活动</option></select></label>
                     <div class="keyword-group-option">
                       <label><input type="checkbox" name="singleKeywordGroup" value="product" />与您的商品相关的关键词</label>
-                      <label class="keyword-group-bid">竞价<input id="singleKeywordGroupBidProduct" data-keyword-group-bid="product" type="number" min="0.02" step="0.01" value="0.45" disabled /></label>
+                      <label class="keyword-group-bid conditional-required">竞价<input id="singleKeywordGroupBidProduct" data-keyword-group-bid="product" type="number" min="0.02" step="0.01" value="0.45" disabled /></label>
                     </div>
                     <div class="keyword-group-option">
                       <label><input type="checkbox" name="singleKeywordGroup" value="category" />与您的商品类别相关的关键词</label>
-                      <label class="keyword-group-bid">竞价<input id="singleKeywordGroupBidCategory" data-keyword-group-bid="category" type="number" min="0.02" step="0.01" value="0.45" disabled /></label>
+                      <label class="keyword-group-bid conditional-required">竞价<input id="singleKeywordGroupBidCategory" data-keyword-group-bid="category" type="number" min="0.02" step="0.01" value="0.45" disabled /></label>
                     </div>
-                    <span class="input-hint">关键词组由亚马逊动态维护，无需在左侧粘贴关键词；每组选项生成一个活动。</span>
+                    <span class="input-hint">关键词组由亚马逊动态维护，无需粘贴关键词；生成数量由活动生成方式决定。</span>
                   </fieldset>
-                  <label>每个活动日预算（站点本币）<input id="singleKeywordBudget" type="number" min="1" step="0.01" value="10" required /></label>
-                  <label>竞价设置<select id="singleKeywordBidMode"><option value="batch">批量统一竞价</option><option value="individual">每个词单独竞价</option></select></label>
-                  <label id="singleKeywordBidField">统一关键词竞价（站点本币）<input id="singleKeywordBid" type="number" min="0.02" step="0.01" value="0.45" required /></label>
+                  <fieldset class="single-keyword-match-options">
+                    <legend>自动投放（可多选）</legend>
+                    <label class="target-structure-setting">自动广告活动方式<select id="singleAutoStructureMode"><option value="separate">每个自动目标单独活动</option><option value="combined">所选自动目标放在同一活动</option></select></label>
+                    <div class="keyword-group-option"><label><input type="checkbox" name="singleAutoTarget" value="close-match" />紧密匹配</label><label class="keyword-group-bid conditional-required">竞价<input data-auto-builder-bid="close-match" type="number" min="0.02" step="0.01" value="0.45" disabled /></label></div>
+                    <div class="keyword-group-option"><label><input type="checkbox" name="singleAutoTarget" value="loose-match" />宽泛匹配</label><label class="keyword-group-bid conditional-required">竞价<input data-auto-builder-bid="loose-match" type="number" min="0.02" step="0.01" value="0.39" disabled /></label></div>
+                    <div class="keyword-group-option"><label><input type="checkbox" name="singleAutoTarget" value="substitutes" />同类商品</label><label class="keyword-group-bid conditional-required">竞价<input data-auto-builder-bid="substitutes" type="number" min="0.02" step="0.01" value="0.32" disabled /></label></div>
+                    <div class="keyword-group-option"><label><input type="checkbox" name="singleAutoTarget" value="complements" />相似商品</label><label class="keyword-group-bid conditional-required">竞价<input data-auto-builder-bid="complements" type="number" min="0.02" step="0.01" value="0.28" disabled /></label></div>
+                    <span class="input-hint">可只选需要的自动投放目标；未选目标在导出时保持暂停。</span>
+                  </fieldset>
+                  <label class="required-field">每个活动日预算（站点本币）<input id="singleKeywordBudget" type="number" min="1" step="0.01" value="10" required /></label>
+                  <label class="required-field">竞价设置<select id="singleKeywordBidMode"><option value="batch">批量统一竞价</option><option value="individual">每个词单独竞价</option></select></label>
+                  <label class="required-field" id="singleKeywordBidField">统一关键词竞价（站点本币）<input id="singleKeywordBid" type="number" min="0.02" step="0.01" value="0.45" required /></label>
                   <fieldset class="single-keyword-placements">
-                    <legend>广告位调整（%）</legend>
-                    <label>搜索结果顶部（首页）<input id="singleKeywordPlacementTop" type="number" min="0" max="900" step="1" value="0" required /></label>
-                    <label>搜索结果其余位置<input id="singleKeywordPlacementRest" type="number" min="0" max="900" step="1" value="0" required /></label>
-                    <label>商品页面<input id="singleKeywordPlacementProduct" type="number" min="0" max="900" step="1" value="0" required /></label>
+                    <legend>关键词 / 关键词组广告位调整（%，选填）</legend>
+                    <label>搜索结果顶部（首页）<input id="singleKeywordPlacementTop" type="number" min="0" max="900" step="1" value="0" /></label>
+                    <label>搜索结果其余位置<input id="singleKeywordPlacementRest" type="number" min="0" max="900" step="1" value="0" /></label>
+                    <label>商品页面<input id="singleKeywordPlacementProduct" type="number" min="0" max="900" step="1" value="0" /></label>
+                  </fieldset>
+                  <fieldset class="single-keyword-placements">
+                    <legend>自动广告广告位调整（%，选填）</legend>
+                    <label>搜索结果顶部（首页）<input id="singleAutoPlacementTop" type="number" min="0" max="900" step="1" value="0" /></label>
+                    <label>搜索结果其余位置<input id="singleAutoPlacementRest" type="number" min="0" max="900" step="1" value="0" /></label>
+                    <label>商品页面<input id="singleAutoPlacementProduct" type="number" min="0" max="900" step="1" value="0" /></label>
                   </fieldset>
                 </div>
-                <p class="input-hint">站点、开始日期、广告组合及竞价方案使用全局设置。广告位调整会应用到本次生成的所有活动，生成后仍可在下方逐个修改。</p>
-                <p id="singleKeywordSummary" role="status" aria-live="polite">粘贴普通关键词或选择关键词组后显示预计活动数和日预算合计。</p>
+                <p class="input-hint">站点、开始日期、广告组合及竞价方案使用全局设置。关键词类活动和自动活动分别使用各自的广告位调整，生成后仍可在下方逐个修改。</p>
+                <p id="singleKeywordSummary" role="status" aria-live="polite">粘贴普通关键词、选择关键词组或自动投放后显示预计活动数和日预算合计。</p>
                 <button class="icon-text-button primary" type="submit">生成并添加到广告活动表</button>
               </form>
 
@@ -697,7 +721,7 @@
       </main>
     </div>
 
-    <script src="app.js?v=20261123-campaign-structure"></script>
+    <script src="app.js?v=20261124-split-negatives-local"></script>
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js" async onload="window.refreshIcons && window.refreshIcons()"></script>
   </body>
 </html>
